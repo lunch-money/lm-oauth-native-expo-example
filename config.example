@@ -1,0 +1,7 @@
+# Public values bundled into the installed sample. Never put secrets or tokens here.
+EXPO_PUBLIC_LUNCH_MONEY_CLIENT_ID=YOUR_PUBLIC_CLIENT_ID
+EXPO_PUBLIC_LUNCH_MONEY_REDIRECT_URI=app.lunchmoney.nativeexpo:/oauth/callback
+
+# Optional: production defaults to https://api.lunchmoney.dev.
+# Set this only to the beta or alpha API base URL supplied by Lunch Money support.
+# EXPO_PUBLIC_LUNCH_MONEY_API_BASE_URL=YOUR_SUPPORT_SUPPLIED_API_BASE_URL

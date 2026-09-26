@@ -1,0 +1,23 @@
+{
+  "expo": {
+    "name": "Lunch Money Native OAuth Example",
+    "slug": "lm-oauth-native-expo-example",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "app.lunchmoney.nativeexpo",
+    "ios": { "bundleIdentifier": "app.lunchmoney.nativeexpo.example" },
+    "android": { "package": "app.lunchmoney.nativeexpo.example" },
+    "plugins": [
+      "expo-secure-store",
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "enableSceneSupport": true
+          }
+        }
+      ]
+    ],
+    "experiments": { "typedRoutes": false }
+  }
+}
