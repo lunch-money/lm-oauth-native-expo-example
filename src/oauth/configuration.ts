@@ -16,7 +16,11 @@ const metadataSchema = z.object({
     .refine((v) => v.includes('none')),
 })
 
-/** Validates public application settings at startup; no secret belongs in this configuration. */
+/**
+ * Call at startup with the registered client ID and redirect URI. Returns the
+ * public settings used by the OAuth workflow and rejects missing or unsafe
+ * values. A native app must never add a client secret here.
+ */
 export function parseConfiguration(input: {
   apiBaseUrl?: string
   clientId?: string
@@ -60,7 +64,11 @@ function configurationError(message: string): SafeOAuthError {
   return new SafeOAuthError('configuration_invalid', message)
 }
 
-/** Called at app startup and before authorization to discover current Lunch Money OAuth endpoints. */
+/**
+ * Ask Lunch Money which URLs the app should use for sign-in, token requests,
+ * and revocation. Call this before opening the browser instead of hard-coding
+ * those URLs. Returns only validated HTTPS endpoints and throws a UI-safe error.
+ */
 export async function discoverAuthorizationServer(
   apiBaseUrl: URL,
   fetcher: typeof fetch = fetch,

@@ -20,7 +20,12 @@ function sameRedirect(actual: URL, expected: URL): boolean {
   )
 }
 
-/** Called when the browser returns to the app; validates the exact redirect and one-time state before code exchange. */
+/**
+ * Add this to the handler that receives the browser redirect. Before requesting
+ * tokens, verify that the returned URL and random state value match what the
+ * app saved when the user tapped Connect. Returns the short-lived code only
+ * when both checks pass; otherwise it throws a UI-safe error.
+ */
 export function validateCallback(
   callbackUrl: string,
   attempt: PendingAuthorization,
@@ -80,7 +85,12 @@ export function validateCallback(
   return code
 }
 
-/** Exchanges the callback code when authorization returns; handles the code and verifier only inside this call. */
+/**
+ * After validating the browser return, send its short-lived code and the saved
+ * PKCE verifier to Lunch Money. Returns the credential that the caller must put
+ * in secure device storage; codes, verifiers, tokens, and provider responses
+ * are never included in thrown errors.
+ */
 export async function exchangeAuthorizationCode(input: {
   clientId: string
   code: string

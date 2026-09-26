@@ -28,7 +28,10 @@ export interface RefreshCoordinator {
   ): Promise<{ acquired: true; value: T } | { acquired: false }>
 }
 
-/** Coordinates refresh actions within this installed app process. */
+/**
+ * Create one coordinator for the installed app process so two UI or lifecycle
+ * events cannot send the same refresh token at the same time.
+ */
 export function createRefreshCoordinator(): RefreshCoordinator {
   let active = false
   return {
@@ -64,9 +67,12 @@ async function restoreAfterTransientFailure(
 }
 
 /**
- * Called by **Refresh access token**. Serializes refresh, durably blocks replay
- * before the request, and atomically stores the complete rotated credential.
- * Tokens remain inside the secure workflow; failures expose only stable results.
+ * Call from the Refresh access token action. It permits only one refresh at a
+ * time, marks the old credential unusable before sending its refresh token,
+ * and saves Lunch Money's complete replacement credential as one value.
+ *
+ * Tokens stay inside this workflow. The caller receives only a status it can
+ * display, including whether the user must connect again.
  */
 export async function refreshCredential(input: {
   clientId: string
