@@ -14,7 +14,11 @@ const profileSchema = z
   })
   .strict()
 
-/** Called by Call /v2/me; uses an access token transiently and returns only the validated public profile. */
+/**
+ * Call from the Call /v2/me action. Adds the access token to this request only
+ * and returns a validated Lunch Money profile; token and response details are
+ * never included in errors shown by the app.
+ */
 export async function readLunchMoneyProfile(
   apiBaseUrl: URL,
   accessToken: string,

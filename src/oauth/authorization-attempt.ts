@@ -12,7 +12,11 @@ const attemptSchema = z.object({
   expiresAt: z.number().int().positive(),
 })
 
-/** Saves state and PKCE before the system browser opens so suspension or restart can resume safely. */
+/**
+ * Before opening the browser, save the random state value, PKCE verifier, and
+ * redirect URI in secure device storage. The app needs them when Lunch Money
+ * sends the user back, including after the app is suspended or restarted.
+ */
 export async function savePendingAuthorization(
   store: KeyValueStore,
   clock: Clock,
@@ -34,7 +38,11 @@ export async function savePendingAuthorization(
   }
 }
 
-/** Loads and deletes the pending attempt before callback validation so every callback can run only once. */
+/**
+ * When the browser sends the user back, load and immediately delete the saved
+ * authorization details. Deleting first ensures the same browser return cannot
+ * be submitted twice, even when validation fails.
+ */
 export async function consumePendingAuthorization(
   store: KeyValueStore,
   clock: Clock,
@@ -78,7 +86,10 @@ export async function consumePendingAuthorization(
   return result.data
 }
 
-/** Removes a malformed or expired attempt during startup without exposing its sensitive values. */
+/**
+ * Call during app startup to discard saved authorization details that are
+ * malformed or more than five minutes old. Their values are never returned.
+ */
 export async function discardAbandonedAuthorization(
   store: KeyValueStore,
   clock: Clock,

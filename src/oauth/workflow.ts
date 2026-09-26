@@ -52,7 +52,11 @@ function completeCallbackOnce(
   return completion
 }
 
-/** Coordinates screen actions while keeping credentials and pending authorization data out of React state. */
+/**
+ * Connect these methods to the sample's screen actions and browser-return
+ * handler. The workflow keeps tokens and saved authorization details out of
+ * React state and returns only data the screen needs.
+ */
 export function createNativeOAuthWorkflow(dependencies: {
   browser: OAuthBrowser
   clock: Clock
@@ -68,7 +72,11 @@ export function createNativeOAuthWorkflow(dependencies: {
   const refreshCoordinator = createRefreshCoordinator()
 
   return {
-    /** Called by Connect; discovers endpoints, saves state/PKCE, opens the system browser, and completes its callback. */
+    /**
+     * Call when the user taps Connect. It finds Lunch Money's current OAuth
+     * URLs, saves the values needed to verify the browser return, opens the
+     * system browser, and finishes authorization when the user comes back.
+     */
     async authorize(): Promise<void> {
       const metadata = await discoverAuthorizationServer(
         configuration.apiBaseUrl,
@@ -99,7 +107,11 @@ export function createNativeOAuthWorkflow(dependencies: {
       await this.completeCallback(callbackUrl, metadata.tokenEndpoint)
     },
 
-    /** Called by the browser return or app deep-link lifecycle; consumes the attempt even when validation fails. */
+    /**
+     * Call when the operating system delivers the browser redirect to the app.
+     * It deletes the saved attempt before validating the redirect, requests
+     * tokens only after validation succeeds, and stores them securely.
+     */
     async completeCallback(
       callbackUrl: string,
       knownTokenEndpoint?: string,
@@ -124,7 +136,10 @@ export function createNativeOAuthWorkflow(dependencies: {
       })
     },
 
-    /** Called by Call /v2/me; the token is loaded inside the action and only the validated profile is returned. */
+    /**
+     * Call when the user taps Call /v2/me. It loads the access token only for
+     * the request and returns the validated profile, not the credential.
+     */
     async readProfile(): Promise<LunchMoneyProfile> {
       const credential = await loadCredential(credentialStore, clock)
       return readLunchMoneyProfile(
@@ -134,7 +149,10 @@ export function createNativeOAuthWorkflow(dependencies: {
       )
     },
 
-    /** Returns non-sensitive flags used to show connection and refresh actions after startup or authorization. */
+    /**
+     * Call after startup or authorization to decide which actions to show. It
+     * returns connection and refresh availability without returning tokens.
+     */
     async connectionStatus(): Promise<{
       connected: boolean
       refreshAvailable: boolean
@@ -142,7 +160,11 @@ export function createNativeOAuthWorkflow(dependencies: {
       return readCredentialSummary(credentialStore)
     },
 
-    /** Called by Refresh access token; rotates and atomically replaces the secure credential as a public client. */
+    /**
+     * Call when the user taps Refresh access token. It sends the refresh token
+     * once and replaces the entire saved credential with Lunch Money's newly
+     * returned values, or tells the screen that the user must connect again.
+     */
     async refresh(): Promise<RefreshResult> {
       const metadata = await discoverAuthorizationServer(
         configuration.apiBaseUrl,
@@ -158,7 +180,11 @@ export function createNativeOAuthWorkflow(dependencies: {
       })
     },
 
-    /** Called by Revoke and verify; retains local data on ambiguity and deletes it only after a confirmed 401. */
+    /**
+     * Call when the user taps Revoke and verify. It asks Lunch Money to revoke
+     * access and deletes the device credential only after the old access token
+     * is confirmed unusable.
+     */
     async revoke(): Promise<void> {
       const credential = await loadCredential(credentialStore, clock)
       const metadata = await discoverAuthorizationServer(
@@ -178,7 +204,10 @@ export function createNativeOAuthWorkflow(dependencies: {
       await clearLocalCredential(credentialStore)
     },
 
-    /** Called by Local reset only; proves device cleanup is a separate operation from remote revocation. */
+    /**
+     * Call when the user taps Local reset only. It clears this device without
+     * telling Lunch Money to revoke the credential.
+     */
     async resetLocal(): Promise<void> {
       await clearLocalCredential(credentialStore)
     },

@@ -1,6 +1,10 @@
 import { SafeOAuthError } from './errors'
 
-/** Called by Revoke and verify; revokes the access token as a public client, then requires the old token to fail. */
+/**
+ * Call from Revoke and verify. Ask Lunch Money to revoke the credential, then
+ * prove the old access token no longer works. Returns only after that proof;
+ * otherwise it throws so the app can retain its local credential and retry.
+ */
 export async function revokeAndVerify(input: {
   accessToken: string
   clientId: string

@@ -66,7 +66,11 @@ async function readState(
   return null
 }
 
-/** Atomically replaces the complete credential after authorization or refresh. */
+/**
+ * After authorization or refresh succeeds, save the complete replacement
+ * credential in secure device storage as one value. Do not update its access
+ * token, refresh token, expiry, or scope separately.
+ */
 export async function saveCredential(
   store: KeyValueStore,
   credential: StoredCredential,
@@ -82,7 +86,11 @@ export async function saveCredential(
   }
 }
 
-/** Loads an active credential for API, refresh, or revoke without exposing it to presentation state. */
+/**
+ * Load a credential only inside the action that calls the API, refreshes, or
+ * revokes access. Returns an active credential or throws a UI-safe error; do
+ * not copy the returned tokens into React or other presentation state.
+ */
 export async function loadCredential(
   store: KeyValueStore,
   clock: Clock,
@@ -112,7 +120,10 @@ export async function loadCredential(
   return state.credential
 }
 
-/** Returns only non-sensitive lifecycle flags needed to render available actions. */
+/**
+ * Use this when rendering the screen. It returns only whether the app is
+ * connected and whether refresh is available, never the stored tokens.
+ */
 export async function readCredentialSummary(
   store: KeyValueStore,
 ): Promise<{ connected: boolean; refreshAvailable: boolean }> {
@@ -124,7 +135,10 @@ export async function readCredentialSummary(
   }
 }
 
-/** Returns only a terminal refresh reason; credential values remain inside the storage module. */
+/**
+ * Before refreshing, check whether an earlier refresh left the credential
+ * unusable. Returns only the reason the user must reconnect, never token data.
+ */
 export async function readReauthorizationReason(
   store: KeyValueStore,
 ): Promise<'invalid_grant' | 'replacement_not_saved' | undefined> {
@@ -136,7 +150,11 @@ export async function readReauthorizationReason(
     : 'replacement_not_saved'
 }
 
-/** Marks the stored token unusable before refresh so restart cannot replay a consumed token. */
+/**
+ * Immediately before sending a refresh token, mark the saved credential as
+ * unusable. If the app stops mid-request, it must ask the user to reconnect
+ * instead of sending that potentially consumed refresh token again.
+ */
 export async function beginRefresh(store: KeyValueStore): Promise<void> {
   try {
     await writeState(store, { status: 'refreshing' })
@@ -148,7 +166,10 @@ export async function beginRefresh(store: KeyValueStore): Promise<void> {
   }
 }
 
-/** Records a terminal refresh state without retaining the unusable credential. */
+/**
+ * When refresh cannot safely continue, discard the unusable credential and
+ * remember only why the app must ask the user to connect again.
+ */
 export async function requireReauthorization(
   store: KeyValueStore,
   reason: Extract<
@@ -163,7 +184,10 @@ export async function requireReauthorization(
   }
 }
 
-/** Implements Local reset only; it removes device credentials and lifecycle markers without a network request. */
+/**
+ * Use for the Local reset action. Removes credentials from this device without
+ * contacting Lunch Money, so it does not revoke access remotely.
+ */
 export async function clearLocalCredential(
   store: KeyValueStore,
 ): Promise<void> {

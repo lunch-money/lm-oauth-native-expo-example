@@ -10,7 +10,11 @@ import type {
 
 WebBrowser.maybeCompleteAuthSession()
 
-/** Expo adapter used when the Connect action prepares PKCE and opens the platform authentication browser. */
+/**
+ * Use this adapter for the Connect action. Expo creates the authorization URL,
+ * random state value, and PKCE values, then opens the operating system's
+ * authentication browser and returns the redirect URL to the app.
+ */
 export const expoOAuthBrowser: OAuthBrowser = {
   async prepare(input): Promise<PreparedAuthorization> {
     const request = new AuthSession.AuthRequest({
@@ -60,7 +64,11 @@ export const expoOAuthBrowser: OAuthBrowser = {
   },
 }
 
-/** Expo adapter used by Refresh access; it requires Lunch Money to return a rotated refresh token. */
+/**
+ * Use this adapter for the Refresh access action. It sends the saved refresh
+ * token and requires Lunch Money to return a new access token and a new refresh
+ * token; the old refresh token is never silently reused.
+ */
 export const expoTokenRefresher: TokenRefresher = {
   async refresh(input) {
     try {
