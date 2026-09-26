@@ -69,16 +69,30 @@ if any of these checks fail.
 
 ### Option B: Android emulator or physical device
 
+On macOS, first follow Expo's
+[Android Studio Emulator guide](https://docs.expo.dev/workflow/android-studio-emulator/)
+to install Android Studio, JDK 17, and the Android SDK. Then use the checklist
+below to configure and verify this sample's development path.
+
 Install and configure:
 
 - Android Studio;
-- the Android SDK, platform tools, build tools, and an SDK platform compatible
-  with the installed Expo version;
-- a compatible JDK—Android Studio's bundled JDK is normally the simplest choice;
+- JDK 17—the Expo macOS guide uses Azul Zulu 17;
+- the Android SDK Platform, Build-Tools, Emulator, and Platform-Tools selected
+  by the Expo and Android Studio setup flow; and
 - `ANDROID_HOME` pointing to the Android SDK, with the SDK's `platform-tools`
-  available on `PATH`; and
-- either an Android Virtual Device created in Android Studio's Device Manager,
-  or a physical device with developer options and USB debugging enabled.
+  and `emulator` directories available on `PATH`.
+
+For an emulator, create an Android Virtual Device in Android Studio's Device
+Manager and accept Android Studio's recommended API and system image. Choose an
+ARM64 image on an Apple Silicon Mac or an x86_64 image on an Intel Mac. A
+download arrow beside the recommended image means it is not installed: click
+the arrow, accept the license, wait for the download, select the installed
+image, and finish creating the device.
+
+Start the virtual device with its **Play** button and wait for the Android home
+screen before running the checks below. Alternatively, connect a physical
+device with developer options and USB debugging enabled.
 
 Verify the shell can find the SDK and a running emulator or attached device:
 
@@ -88,13 +102,9 @@ adb version
 adb devices
 ```
 
-Start an Android Virtual Device from Android Studio before running the sample,
-or confirm that `adb devices` lists the physical device as `device`, not
-`unauthorized`. The first `npm run android` generates the native Android project,
-compiles it with Gradle, and installs the development build.
-
-Follow Expo's official [Android emulator environment setup](https://docs.expo.dev/get-started/set-up-your-environment/?platform=android&device=simulated)
-for the current SDK, environment-variable, and emulator instructions.
+Confirm that `adb devices` lists the emulator or physical device as `device`,
+not `offline` or `unauthorized`. The first `npm run android` generates the native
+Android project, compiles it with Gradle, and installs the development build.
 
 ### Device and simulator networking
 
@@ -147,6 +157,10 @@ secret, token, code, or verifier in them. Native clients have no client secret.
 
 ## 4. Build and run
 
+Choose the platform whose prerequisites you completed in step 1.
+
+### Option A: iOS Simulator
+
 For the first iOS setup, build and install the development app in iOS
 Simulator. Simulator acts as a virtual iPhone on your Mac and runs the native
 development build used throughout this walkthrough. The command generates and
@@ -188,14 +202,37 @@ configuration change. Most JavaScript and TypeScript changes require only the
 foreground `npm run ios` process. To stop every booted Simulator device, see
 [Stop iOS Simulator completely](../TROUBLESHOOTING.md#stop-ios-simulator-completely).
 
-On Android, run `npm run android`. Its build/start lifecycle will be documented
-separately after the Android path is tested.
-
 The expected result is the **Native OAuth with Expo** screen in Simulator.
 
-## 5. Use the app in Simulator
+### Option B: Android emulator
 
-With the development build connected to Metro, choose **Connect Lunch Money**.
+Start the virtual device from Android Studio's Device Manager and wait for the
+Android home screen. In the configured terminal, confirm that `adb devices`
+lists the emulator as `device`, then run:
+
+```sh
+npm run android
+```
+
+On its first run, this command generates the native Android project, downloads
+the required Gradle dependencies, compiles the app, installs it in the running
+emulator, starts Metro, and opens the app. The first build may take several
+minutes; later builds are usually faster. Metro may display **Idle** while the
+native build continues elsewhere in the output. Wait until Expo prints
+**Logs for your project will appear below. Press Ctrl+C to exit.** before
+looking for the running app in the emulator.
+
+Metro remains attached to the terminal. **Ctrl+C** stops Metro without shutting
+down the Android emulator. The expected result is the **Native OAuth with Expo**
+screen in the emulator.
+
+If more than one emulator or physical Android device is connected, Expo may ask
+which device to use.
+
+## 5. Use the app
+
+With the development build connected to Metro on either platform, choose
+**Connect Lunch Money**.
 
 The app discovers current OAuth endpoints, creates unpredictable state and S256
 PKCE, saves the short-lived attempt in platform secure storage, and opens the

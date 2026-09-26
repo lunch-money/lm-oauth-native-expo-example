@@ -83,6 +83,18 @@ The sample keeps the local credential unless the old token receives `401` from
 `/v2/me`. Check network access and official Lunch Money status/support guidance;
 do not print or share the token while investigating.
 
+## Android emulator reports `ENETUNREACH`
+
+An error such as `Failed to connect` followed by `Network is unreachable` means
+the emulator has no active network route to Metro. Open Android's Quick Settings
+inside the emulator, turn off Airplane Mode, and confirm networking is enabled.
+The emulator also needs internet access for Lunch Money authorization and API
+requests.
+
+After networking becomes available, reload the app from the Metro terminal or
+rerun `npm run android`. If the emulator still has no network, stop it, use
+Android Studio's **Cold Boot** action, and try again.
+
 ## Physical device cannot connect
 
 Confirm the device can reach the same approved public HTTPS API as the host. A

@@ -37,7 +37,7 @@ npm run ios:build
 # Start Metro in the foreground and open the installed app
 npm run ios
 
-# Android (not yet split into separate build/start commands)
+# Android: start an emulator, then build, install, and start Metro
 npm run android
 ```
 
