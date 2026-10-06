@@ -35,7 +35,7 @@ describe('public repository boundaries', () => {
   })
 
   it('ships public placeholders without a secret field', () => {
-    const text = readFileSync('config.example', 'utf8')
+    const text = readFileSync('env.example', 'utf8')
     expect(text).toContain(
       'EXPO_PUBLIC_LUNCH_MONEY_CLIENT_ID=YOUR_PUBLIC_CLIENT_ID',
     )

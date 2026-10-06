@@ -3,7 +3,7 @@
 ## Configuration is missing
 
 Set the public client ID and redirect URI shown in
-[`config.example`](config.example). The API base URL is optional and defaults to
+[`env.example`](env.example). The API base URL is optional and defaults to
 the Lunch Money production API. Inspect local configuration yourself; never
 paste tokens or credential-file contents into logs or support requests. For
 validation requirements and restart instructions, see

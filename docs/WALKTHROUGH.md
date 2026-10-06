@@ -148,9 +148,9 @@ environment, set `EXPO_PUBLIC_LUNCH_MONEY_API_BASE_URL` to the exact URL supplie
 by Lunch Money support. The client registration and API base URL must belong to
 the same environment.
 
-As an equivalent local option, copy [`config.example`](../config.example) to
-`.env.local`, replace the placeholders, and run the commands below. Expo loads
-the file automatically. Git ignores `.env.local`.
+As an equivalent local option, copy [`env.example`](../env.example) to `.env`,
+replace the placeholders, and run the commands below. Expo loads the file
+automatically. Git ignores `.env`.
 
 Values with `EXPO_PUBLIC_` are compiled into the application. Never put a client
 secret, token, code, or verifier in them. Native clients have no client secret.

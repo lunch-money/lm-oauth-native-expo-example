@@ -7,4 +7,4 @@ android/
 .DS_Store
 .env
 .env.*
-!config.example
+!env.example
