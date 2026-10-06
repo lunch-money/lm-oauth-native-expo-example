@@ -42,6 +42,40 @@ export interface StoredCredential {
   tokenType: 'Bearer'
 }
 
+export interface LunchMoneyConnection {
+  accountId: number
+  lunchMoneyUserId: number
+  lunchMoneyUserName: string
+  budgetName: string
+  credentialState: CredentialState
+}
+
+export interface ConnectionSummary {
+  accountId: number
+  lunchMoneyUserId: number
+  lunchMoneyUserName: string
+  budgetName: string
+  active: boolean
+  connected: boolean
+  refreshAvailable: boolean
+}
+
+interface AuthorizationResultBase {
+  budgetName: string
+  lunchMoneyUserName: string
+  visibleBudgetCount: number
+}
+
+export type AuthorizationResult =
+  | (AuthorizationResultBase & { outcome: 'connected_new_user' })
+  | (AuthorizationResultBase & { outcome: 'added_budget' })
+  | (AuthorizationResultBase & { outcome: 'reauthorized_budget' })
+  | (AuthorizationResultBase & {
+      outcome: 'switched_user'
+      previousLunchMoneyUserName: string | null
+    })
+  | (AuthorizationResultBase & { outcome: 'returned_user' })
+
 export type CredentialState =
   | { status: 'active'; credential: StoredCredential }
   | { status: 'refreshing' }

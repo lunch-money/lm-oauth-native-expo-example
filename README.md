@@ -4,8 +4,8 @@ This is a focused reference for an iOS or Android application installed on a
 user's device **without a trusted backend that can hold a client secret**. It
 uses the system authentication browser, authorization code with state and S256
 PKCE, OAuth discovery, and platform secure storage to authorize Lunch Money,
-call `GET /v2/me`, optionally rotate refresh credentials, revoke access, and
-reauthorize.
+call `GET /v2/me`, retain multiple authorized budgets, switch the active budget,
+optionally rotate refresh credentials, revoke access, and reauthorize.
 
 [`expo-auth-session`](https://docs.expo.dev/versions/latest/sdk/auth-session/) is
 Lunch Money's recommended and supported third-party OAuth library for Expo. It
@@ -57,8 +57,20 @@ may contain only public configuration—never a secret or token. Git ignores the
 local file; do not commit it.
 
 Follow the canonical [native walkthrough](docs/WALKTHROUGH.md) to register the
-client, authorize Lunch Money, call `/v2/me`, optionally refresh, revoke and
-verify access, reauthorize, and test local-only reset.
+client, authorize one or more budgets, switch the active budget, call `/v2/me`,
+optionally refresh, revoke and verify access, reauthorize, and test local-only
+reset.
+
+Token exchange alone is not a completed connection. Each authorization calls
+and strictly validates `/v2/me` before normal credential persistence or
+connected UI appears. Its `id` and `name` establish the active Lunch Money user,
+The pair (`id`, `account_id`) is the local connection key, so two Lunch Money
+users can independently authorize the same shared account. `budget_name` is
+display metadata.
+The active-budget selector exposes only stored budgets belonging to that active
+validated user. **Authorize another budget** starts a new authorization and may
+return a different user because shared browser state never proves identity.
+Until `/v2/me` succeeds, the app shows no connected identity or budget list.
 
 ## Code map
 
@@ -80,6 +92,12 @@ reauthorization; it does not define background scheduling or every production
 device lifecycle. Production apps must also supply claimed links, final application
 identifiers, release signing, device testing, redacted observability, and
 accessibility review. See the [production checklist](PRODUCTION_CHECKLIST.md).
+
+Connections authorized by different Lunch Money users may coexist securely on
+the device, but only the active validated user's budgets are listed or
+selectable. Reauthorizing a previously stored user makes that user's connections
+visible again. The sample does not provide application login or isolation
+between people sharing a device.
 
 The code is derived conceptually from Lunch Money's internal Expo demonstration
 at commit `100e6aaaa7130250c76891cfef86691f53971892` and the public confidential

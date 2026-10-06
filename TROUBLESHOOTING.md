@@ -54,6 +54,23 @@ bypass state, PKCE, redirect, expiry, or one-time consumption checks.
 This is a normal user decision. Choose Connect again when ready. No credential
 is saved.
 
+## An older saved credential requires authorization again
+
+Earlier development storage formats did not retain the complete validated user
+identity required by the connected UI. The current sample removes those local
+credentials and asks you to authorize again rather than assigning a guessed
+identity or displaying placeholders. This migration does not remotely revoke
+an old grant; remove it through Lunch Money Connected Apps if it should no
+longer remain authorized.
+
+## Two-finger trackpad scrolling does not work in iOS Simulator
+
+Xcode 26.6 may not translate ordinary macOS two-finger scrolling into an iPhone
+touch gesture. Click and drag upward inside the simulated screen to perform a
+touch-style swipe, or verify the interaction on a physical device. Browser
+arrow-key behavior is not representative of a native React Native screen and
+the sample does not add simulator-only keyboard scrolling.
+
 ## `/v2/me` reports missing scope
 
 Register a replacement native client with `me:read`. Scopes are immutable and

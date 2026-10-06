@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   ActivityIndicator,
+  Alert,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -13,6 +15,7 @@ import {
   createNativeOAuthWorkflow,
   discardAbandonedAuthorization,
   safeErrorMessage,
+  type ConnectionStatus,
   type LunchMoneyProfile,
 } from '../oauth'
 import { SafeOAuthError } from '../oauth/errors'
@@ -21,15 +24,30 @@ import {
   expoTokenRefresher,
 } from '../oauth/expo-auth-session'
 import { loadPublicConfiguration } from './configuration'
+import {
+  authorizationResultMessage,
+  connectedStatusText,
+  connectionLabel,
+} from './connection-presentation'
 import { secureStore } from './secure-store'
 
 const clock = { now: () => Date.now() }
+const emptyConnectionStatus: ConnectionStatus = {
+  activeAccountId: null,
+  activeLunchMoneyUserId: null,
+  activeLunchMoneyUserName: null,
+  connections: [],
+  legacyCredentialDiscarded: false,
+}
 
 export function AppScreen() {
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('Ready to connect.')
   const [profile, setProfile] = useState<LunchMoneyProfile | null>(null)
-  const [refreshAvailable, setRefreshAvailable] = useState(false)
+  const [budgetSelectorVisible, setBudgetSelectorVisible] = useState(false)
+  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>(
+    emptyConnectionStatus,
+  )
   const workflow = useMemo(
     () =>
       createNativeOAuthWorkflow({
@@ -49,14 +67,14 @@ export function AppScreen() {
       if (!url || !url.startsWith('app.lunchmoney.nativeexpo:/oauth/callback'))
         return
       setBusy(true)
+      setProfile(null)
+      setConnectionStatus(emptyConnectionStatus)
       try {
-        await workflow.completeCallback(url)
+        const result = await workflow.completeCallback(url)
         if (active) {
           const status = await workflow.connectionStatus()
-          setRefreshAvailable(status.refreshAvailable)
-          setMessage(
-            'Authorization resumed after app restart and completed securely.',
-          )
+          setConnectionStatus(status)
+          setMessage(authorizationResultMessage(result))
         }
       } catch (error) {
         if (active) setMessage(safeErrorMessage(error))
@@ -69,7 +87,13 @@ export function AppScreen() {
     void workflow
       .connectionStatus()
       .then((status) => {
-        if (active) setRefreshAvailable(status.refreshAvailable)
+        if (active) {
+          setConnectionStatus(status)
+          if (status.legacyCredentialDiscarded)
+            setMessage(
+              'A credential saved by an older sample version could not be identified safely. Authorize Lunch Money again.',
+            )
+        }
       })
       .catch(() => undefined)
     return () => {
@@ -77,22 +101,47 @@ export function AppScreen() {
     }
   }, [workflow])
 
-  async function act(action: () => Promise<void>, success: string) {
+  async function act<T>(
+    action: () => Promise<T>,
+    success: string | ((result: T) => string),
+  ) {
     setBusy(true)
     setProfile(null)
     try {
-      await action()
-      setMessage(success)
+      const result = await action()
+      setMessage(typeof success === 'function' ? success(result) : success)
     } catch (error) {
       setMessage(safeErrorMessage(error))
     } finally {
-      const status = await workflow.connectionStatus().catch(() => ({
-        connected: false,
-        refreshAvailable: false,
-      }))
-      setRefreshAvailable(status.refreshAvailable)
+      const status = await workflow
+        .connectionStatus()
+        .catch(() => emptyConnectionStatus)
+      setConnectionStatus(status)
       setBusy(false)
     }
+  }
+
+  const connections = connectionStatus.connections
+  const activeConnection = connections.find(({ active }) => active)
+  const refreshAvailable = Boolean(activeConnection?.refreshAvailable)
+  const connectedStatus = connectedStatusText(connectionStatus)
+
+  async function confirmForgetLocalCredential(): Promise<boolean> {
+    return new Promise((resolve) => {
+      Alert.alert(
+        'Forget local credential only?',
+        'This removes only the active budget credential from this device. The remote Lunch Money authorization remains active.',
+        [
+          { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+          {
+            text: 'Forget credential',
+            style: 'destructive',
+            onPress: () => resolve(true),
+          },
+        ],
+        { cancelable: true, onDismiss: () => resolve(false) },
+      )
+    })
   }
 
   return (
@@ -105,29 +154,63 @@ export function AppScreen() {
         platform secure storage. No client secret belongs in this app.
       </Text>
       <View style={styles.card}>
+        {connectedStatus ? (
+          <Text style={styles.message}>{connectedStatus}</Text>
+        ) : null}
+        {activeConnection ? (
+          <View style={styles.budgetControl}>
+            <Text style={styles.heading}>Active budget</Text>
+            {connections.length === 1 ? (
+              <View style={styles.activeBudget}>
+                <Text style={styles.activeBudgetText}>
+                  {connectionLabel(activeConnection, connections)}
+                </Text>
+              </View>
+            ) : (
+              <Pressable
+                accessibilityHint="Opens the authorized budget selector"
+                accessibilityLabel={`Active budget, ${connectionLabel(activeConnection, connections)}`}
+                accessibilityRole="button"
+                disabled={busy}
+                onPress={() => setBudgetSelectorVisible(true)}
+                style={[styles.activeBudget, busy && styles.disabled]}
+              >
+                <Text style={styles.activeBudgetText}>
+                  {connectionLabel(activeConnection, connections)} ▾
+                </Text>
+              </Pressable>
+            )}
+          </View>
+        ) : null}
         <Action
           disabled={busy}
-          label="1. Connect Lunch Money"
-          onPress={() =>
-            act(
-              () => workflow.authorize(),
-              'Authorization completed and the credential is stored securely.',
-            )
+          label={
+            connections.length
+              ? 'Authorize another budget'
+              : 'Connect Lunch Money'
           }
-        />
-        <Action
-          disabled={busy}
-          label="2. Call /v2/me"
           onPress={() =>
             act(async () => {
-              setProfile(await workflow.readProfile())
-            }, 'The validated /v2/me profile is shown below.')
+              setConnectionStatus(emptyConnectionStatus)
+              return workflow.authorize()
+            }, authorizationResultMessage)
           }
         />
-        {refreshAvailable ? (
+        {activeConnection ? (
           <Action
             disabled={busy}
-            label="3. Refresh access token"
+            label="Call /v2/me"
+            onPress={() =>
+              act(async () => {
+                setProfile(await workflow.readProfile())
+              }, 'The validated /v2/me profile is shown below.')
+            }
+          />
+        ) : null}
+        {activeConnection && refreshAvailable ? (
+          <Action
+            disabled={busy}
+            label="Refresh access token"
             onPress={() =>
               act(async () => {
                 const result = await workflow.refresh()
@@ -150,34 +233,83 @@ export function AppScreen() {
             }
           />
         ) : null}
-        <Action
-          disabled={busy}
-          label={
-            refreshAvailable ? '4. Revoke and verify' : '3. Revoke and verify'
-          }
-          onPress={() =>
-            act(
-              () => workflow.revoke(),
-              'Lunch Money rejected the old token and the local credential was removed.',
-            )
-          }
-        />
-        <Action
-          disabled={busy}
-          label="Local reset only"
-          secondary
-          onPress={() =>
-            act(
-              () => workflow.resetLocal(),
-              'Local credential removed. Remote access was not revoked.',
-            )
-          }
-        />
+        {activeConnection ? (
+          <Action
+            disabled={busy}
+            label="Disconnect active budget"
+            onPress={() =>
+              act(
+                () => workflow.revoke(),
+                'The active budget was disconnected and its old token was rejected.',
+              )
+            }
+          />
+        ) : null}
+        {activeConnection ? (
+          <Action
+            disabled={busy}
+            label="Forget local credential only"
+            secondary
+            onPress={async () => {
+              if (!(await confirmForgetLocalCredential())) return
+              await act(
+                () => workflow.resetLocal(),
+                'Local credential removed. Remote Lunch Money authorization remains active.',
+              )
+            }}
+          />
+        ) : null}
         {busy ? <ActivityIndicator accessibilityLabel="Working" /> : null}
         <Text accessibilityLiveRegion="polite" style={styles.message}>
           {message}
         </Text>
       </View>
+      <Modal
+        animationType="slide"
+        onRequestClose={() => setBudgetSelectorVisible(false)}
+        transparent
+        visible={budgetSelectorVisible}
+      >
+        <View style={styles.modalBackdrop}>
+          <View accessibilityViewIsModal style={styles.selectorSheet}>
+            <Text style={styles.heading}>Choose active budget</Text>
+            {connections.map((connection) => (
+              <Pressable
+                accessibilityLabel={connectionLabel(connection, connections)}
+                accessibilityRole="radio"
+                accessibilityState={{
+                  disabled: busy,
+                  selected: connection.active,
+                }}
+                disabled={busy}
+                key={`${connection.lunchMoneyUserId}:${connection.accountId}`}
+                onPress={() => {
+                  setBudgetSelectorVisible(false)
+                  void act(
+                    () => workflow.selectConnection(connection.accountId),
+                    `${connection.budgetName} is now active.`,
+                  )
+                }}
+                style={[
+                  styles.selectorOption,
+                  connection.active && styles.budgetOptionActive,
+                  busy && styles.disabled,
+                ]}
+              >
+                <Text style={styles.activeBudgetText}>
+                  {connectionLabel(connection, connections)}
+                </Text>
+              </Pressable>
+            ))}
+            <Action
+              disabled={busy}
+              label="Cancel"
+              onPress={() => setBudgetSelectorVisible(false)}
+              secondary
+            />
+          </View>
+        </View>
+      </Modal>
       {profile ? (
         <View style={styles.card}>
           <Text style={styles.heading}>Validated profile</Text>
@@ -254,6 +386,36 @@ const styles = StyleSheet.create({
     gap: 12,
     marginBottom: 18,
     padding: 18,
+  },
+  budgetControl: { gap: 8, marginBottom: 4 },
+  budgetOptionActive: { backgroundColor: '#bcdccb' },
+  activeBudget: {
+    backgroundColor: '#e2eee7',
+    borderColor: '#176b4d',
+    borderRadius: 10,
+    borderWidth: 1,
+    padding: 12,
+  },
+  activeBudgetText: { color: '#176b4d', fontSize: 16, fontWeight: '700' },
+  modalBackdrop: {
+    backgroundColor: 'rgba(21, 35, 28, 0.45)',
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  selectorSheet: {
+    backgroundColor: '#fffdf7',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    gap: 10,
+    padding: 24,
+    paddingBottom: 40,
+  },
+  selectorOption: {
+    backgroundColor: '#e2eee7',
+    borderColor: '#176b4d',
+    borderRadius: 10,
+    borderWidth: 1,
+    padding: 14,
   },
   button: {
     alignItems: 'center',

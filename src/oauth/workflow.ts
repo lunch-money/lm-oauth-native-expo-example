@@ -4,10 +4,11 @@ import {
 } from './authorization-attempt'
 import { exchangeAuthorizationCode, validateCallback } from './callback'
 import {
-  clearLocalCredential,
   loadCredential,
-  readCredentialSummary,
-  saveCredential,
+  readConnectionSummary,
+  removeActiveConnection,
+  selectActiveConnection,
+  upsertConnection,
 } from './credential-storage'
 import { discoverAuthorizationServer } from './configuration'
 import { SafeOAuthError } from './errors'
@@ -19,6 +20,7 @@ import {
 } from './refresh'
 import { revokeAndVerify } from './revocation'
 import type {
+  AuthorizationResult,
   Clock,
   KeyValueStore,
   LunchMoneyProfile,
@@ -28,12 +30,12 @@ import type {
 } from './types'
 
 let activeCallback:
-  { callbackUrl: string; completion: Promise<void> } | undefined
+  { callbackUrl: string; completion: Promise<AuthorizationResult> } | undefined
 
 function completeCallbackOnce(
   callbackUrl: string,
-  complete: () => Promise<void>,
-): Promise<void> {
+  complete: () => Promise<AuthorizationResult>,
+): Promise<AuthorizationResult> {
   if (activeCallback) {
     if (activeCallback.callbackUrl === callbackUrl)
       return activeCallback.completion
@@ -77,7 +79,7 @@ export function createNativeOAuthWorkflow(dependencies: {
      * URLs, saves the values needed to verify the browser return, opens the
      * system browser, and finishes authorization when the user comes back.
      */
-    async authorize(): Promise<void> {
+    async authorize(): Promise<AuthorizationResult> {
       const metadata = await discoverAuthorizationServer(
         configuration.apiBaseUrl,
         fetcher,
@@ -104,18 +106,19 @@ export function createNativeOAuthWorkflow(dependencies: {
         )
         throw error
       }
-      await this.completeCallback(callbackUrl, metadata.tokenEndpoint)
+      return this.completeCallback(callbackUrl, metadata.tokenEndpoint)
     },
 
     /**
      * Call when the operating system delivers the browser redirect to the app.
      * It deletes the saved attempt before validating the redirect, requests
-     * tokens only after validation succeeds, and stores them securely.
+     * tokens only after validation succeeds, identifies the selected budget
+     * with /v2/me, and then stores the complete connection securely.
      */
     async completeCallback(
       callbackUrl: string,
       knownTokenEndpoint?: string,
-    ): Promise<void> {
+    ): Promise<AuthorizationResult> {
       return completeCallbackOnce(callbackUrl, async () => {
         const attempt = await consumePendingAuthorization(attemptStore, clock)
         const code = validateCallback(callbackUrl, attempt)
@@ -132,7 +135,12 @@ export function createNativeOAuthWorkflow(dependencies: {
           now: clock.now(),
           fetcher,
         })
-        await saveCredential(credentialStore, credential)
+        const profile = await readLunchMoneyProfile(
+          configuration.apiBaseUrl,
+          credential.accessToken,
+          fetcher,
+        )
+        return upsertConnection(credentialStore, profile, credential)
       })
     },
 
@@ -153,11 +161,13 @@ export function createNativeOAuthWorkflow(dependencies: {
      * Call after startup or authorization to decide which actions to show. It
      * returns connection and refresh availability without returning tokens.
      */
-    async connectionStatus(): Promise<{
-      connected: boolean
-      refreshAvailable: boolean
-    }> {
-      return readCredentialSummary(credentialStore)
+    async connectionStatus() {
+      return readConnectionSummary(credentialStore)
+    },
+
+    /** Select an already-authorized budget without starting OAuth. */
+    async selectConnection(accountId: number): Promise<void> {
+      await selectActiveConnection(credentialStore, accountId)
     },
 
     /**
@@ -181,7 +191,7 @@ export function createNativeOAuthWorkflow(dependencies: {
     },
 
     /**
-     * Call when the user taps Revoke and verify. It asks Lunch Money to revoke
+     * Call when the user taps Disconnect active budget. It asks Lunch Money to revoke
      * access and deletes the device credential only after the old access token
      * is confirmed unusable.
      */
@@ -201,15 +211,15 @@ export function createNativeOAuthWorkflow(dependencies: {
           : {}),
         fetcher,
       })
-      await clearLocalCredential(credentialStore)
+      await removeActiveConnection(credentialStore)
     },
 
     /**
-     * Call when the user taps Local reset only. It clears this device without
-     * telling Lunch Money to revoke the credential.
+     * Call after confirmation for Forget local credential only. It clears this
+     * device without telling Lunch Money to revoke the credential.
      */
     async resetLocal(): Promise<void> {
-      await clearLocalCredential(credentialStore)
+      await removeActiveConnection(credentialStore)
     },
   }
 }

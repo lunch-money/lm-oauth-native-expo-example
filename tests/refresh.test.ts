@@ -1,7 +1,9 @@
 import {
   beginRefresh,
   loadCredential,
-  saveCredential,
+  readConnectionSummary,
+  selectActiveConnection,
+  upsertConnection,
 } from '../src/oauth/credential-storage'
 import { RefreshProtocolError } from '../src/oauth/errors'
 import {
@@ -25,6 +27,17 @@ const replacement: StoredCredential = {
   scope: 'me:read offline_access',
   tokenType: 'Bearer',
 }
+const profile = {
+  name: 'Demo User',
+  email: 'user@example.test',
+  id: 1,
+  account_id: 2,
+  budget_name: 'Demo',
+  primary_currency: 'usd',
+  api_key_label: null,
+}
+const saveCredential = (store: MemoryStore, credential: StoredCredential) =>
+  upsertConnection(store, profile, credential)
 
 function setup(refresher: TokenRefresher, store = new MemoryStore()) {
   const clock = fakeClock()
@@ -165,5 +178,65 @@ describe('native refresh rotation', () => {
     })
     release()
     await expect(first).resolves.toEqual({ status: 'refreshed' })
+  })
+
+  it('isolates terminal refresh failure to the active account', async () => {
+    const refresher = {
+      refresh: jest
+        .fn()
+        .mockRejectedValue(new RefreshProtocolError('invalid_grant')),
+    }
+    const { run, store } = setup(refresher)
+    await upsertConnection(
+      store,
+      { ...profile, account_id: 10, budget_name: 'First' },
+      { ...current, accessToken: 'first-access-token' },
+    )
+    await upsertConnection(
+      store,
+      { ...profile, account_id: 20, budget_name: 'Second' },
+      { ...current, accessToken: 'second-access-token' },
+    )
+
+    await expect(run()).resolves.toEqual({
+      status: 'reauthorization_required',
+      reason: 'invalid_grant',
+    })
+    await expect(readConnectionSummary(store)).resolves.toMatchObject({
+      connections: [
+        { accountId: 10, connected: true },
+        { accountId: 20, connected: false },
+      ],
+    })
+    await selectActiveConnection(store, 10)
+    await expect(loadCredential(store, fakeClock())).resolves.toMatchObject({
+      accessToken: 'first-access-token',
+    })
+  })
+
+  it('isolates an interrupted refresh marker to the active account', async () => {
+    const store = new MemoryStore()
+    await upsertConnection(
+      store,
+      { ...profile, account_id: 10, budget_name: 'First' },
+      { ...current, accessToken: 'first-access-token' },
+    )
+    await upsertConnection(
+      store,
+      { ...profile, account_id: 20, budget_name: 'Second' },
+      { ...current, accessToken: 'second-access-token' },
+    )
+    await beginRefresh(store)
+
+    await expect(readConnectionSummary(store)).resolves.toMatchObject({
+      connections: [
+        { accountId: 10, connected: true },
+        { accountId: 20, connected: false },
+      ],
+    })
+    await selectActiveConnection(store, 10)
+    await expect(loadCredential(store, fakeClock())).resolves.toMatchObject({
+      accessToken: 'first-access-token',
+    })
   })
 })
