@@ -1,7 +1,7 @@
 import { SafeOAuthError } from './errors'
 
 /**
- * Call from Revoke and verify. Ask Lunch Money to revoke the credential, then
+ * Call from Disconnect active budget. Ask Lunch Money to revoke the credential, then
  * prove the old access token no longer works. Returns only after that proof;
  * otherwise it throws so the app can retain its local credential and retry.
  */

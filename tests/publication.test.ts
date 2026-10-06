@@ -35,10 +35,47 @@ describe('public repository boundaries', () => {
   })
 
   it('ships public placeholders without a secret field', () => {
-    const text = readFileSync('config.example', 'utf8')
+    const text = readFileSync('env.example', 'utf8')
     expect(text).toContain(
       'EXPO_PUBLIC_LUNCH_MONEY_CLIENT_ID=YOUR_PUBLIC_CLIENT_ID',
     )
     expect(text).not.toMatch(/CLIENT_SECRET|ACCESS_TOKEN|REFRESH_TOKEN/)
+  })
+
+  it('clears resource output across authorization and budget transitions', () => {
+    const screen = readFileSync('src/scaffolding/AppScreen.tsx', 'utf8')
+    expect(screen).toMatch(
+      /setBusy\(true\)\s+setProfile\(null\)\s+setConnectionStatus\(emptyConnectionStatus\)\s+try \{\s+const result = await workflow\.completeCallback/,
+    )
+    expect(screen).toMatch(
+      /async function act[\s\S]*setBusy\(true\)\s+setProfile\(null\)/,
+    )
+    expect(screen).toMatch(
+      /setConnectionStatus\(emptyConnectionStatus\)\s+return workflow\.authorize\(\)/,
+    )
+    expect(screen).toContain(
+      '() => workflow.selectConnection(connection.accountId)',
+    )
+  })
+
+  it('keeps the local-only forget action explicit and confirmed', () => {
+    const screen = readFileSync('src/scaffolding/AppScreen.tsx', 'utf8')
+    expect(screen).toContain('Forget local credential only')
+    expect(screen).toContain(
+      'The remote Lunch Money authorization remains active.',
+    )
+    expect(screen).toContain('confirmForgetLocalCredential()')
+  })
+
+  it('uses a compact accessible selector for multiple visible budgets', () => {
+    const screen = readFileSync('src/scaffolding/AppScreen.tsx', 'utf8')
+    expect(screen).toContain('<Modal')
+    expect(screen).toContain(
+      'onRequestClose={() => setBudgetSelectorVisible(false)}',
+    )
+    expect(screen).toContain('accessibilityRole="radio"')
+    expect(screen).toContain('accessibilityRole="button"')
+    expect(screen).toContain('setBudgetSelectorVisible(false)')
+    expect(screen).not.toContain('Switch budget')
   })
 })

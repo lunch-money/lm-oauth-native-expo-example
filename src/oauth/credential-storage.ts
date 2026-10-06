@@ -2,12 +2,19 @@ import { z } from 'zod'
 import { SafeOAuthError } from './errors'
 import type {
   Clock,
+  AuthorizationResult,
+  ConnectionSummary,
   CredentialState,
   KeyValueStore,
+  LunchMoneyConnection,
+  LunchMoneyProfile,
   StoredCredential,
 } from './types'
 
-const CREDENTIAL_KEY = 'lunch-money.native-oauth.credential.v1'
+const LEGACY_CREDENTIAL_KEY = 'lunch-money.native-oauth.credential.v1'
+const LEGACY_CONNECTIONS_KEY = 'lunch-money.native-oauth.connections.v2'
+const CONNECTIONS_KEY = 'lunch-money.native-oauth.connections.v3'
+
 const credentialSchema = z
   .object({
     accessToken: z.string().min(1),
@@ -33,51 +40,222 @@ const credentialStateSchema = z.discriminatedUnion('status', [
     })
     .strict(),
 ])
+const connectionSchema = z
+  .object({
+    accountId: z.number().int(),
+    lunchMoneyUserId: z.number().int(),
+    lunchMoneyUserName: z.string().min(1),
+    budgetName: z.string(),
+    credentialState: credentialStateSchema,
+  })
+  .strict()
+const connectionsSchema = z
+  .object({
+    version: z.literal(3),
+    activeAccountId: z.number().int().nullable(),
+    activeLunchMoneyUserId: z.number().int().nullable(),
+    connections: z.array(connectionSchema),
+    legacyCredentialDiscarded: z.boolean(),
+  })
+  .strict()
+  .superRefine((document, context) => {
+    const connectionKeys = new Set<string>()
+    for (const connection of document.connections) {
+      const key = JSON.stringify([
+        connection.lunchMoneyUserId,
+        connection.accountId,
+      ])
+      if (connectionKeys.has(key)) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Duplicate Lunch Money user and account pair.',
+        })
+      }
+      connectionKeys.add(key)
+    }
+    if (document.activeAccountId === null) return
+    const active = document.connections.find(
+      ({ accountId, lunchMoneyUserId }) =>
+        accountId === document.activeAccountId &&
+        lunchMoneyUserId === document.activeLunchMoneyUserId,
+    )
+    if (!active) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Active connection does not belong to the active user.',
+      })
+    }
+  })
 
-async function writeState(
-  store: KeyValueStore,
-  state: CredentialState,
-): Promise<void> {
-  await store.set(CREDENTIAL_KEY, JSON.stringify(state))
+interface ConnectionsDocument {
+  version: 3
+  activeAccountId: number | null
+  activeLunchMoneyUserId: number | null
+  connections: LunchMoneyConnection[]
+  legacyCredentialDiscarded: boolean
 }
 
-async function readState(
+export interface ConnectionStatus {
+  activeAccountId: number | null
+  activeLunchMoneyUserId: number | null
+  activeLunchMoneyUserName: string | null
+  connections: ConnectionSummary[]
+  legacyCredentialDiscarded: boolean
+}
+
+const emptyDocument = (): ConnectionsDocument => ({
+  version: 3,
+  activeAccountId: null,
+  activeLunchMoneyUserId: null,
+  connections: [],
+  legacyCredentialDiscarded: false,
+})
+
+async function writeDocument(
   store: KeyValueStore,
-): Promise<CredentialState | null> {
+  document: ConnectionsDocument,
+): Promise<void> {
+  await store.set(CONNECTIONS_KEY, JSON.stringify(document))
+}
+
+async function discardLegacyStorage(
+  store: KeyValueStore,
+): Promise<ConnectionsDocument | null> {
+  const legacyKeys = [LEGACY_CREDENTIAL_KEY, LEGACY_CONNECTIONS_KEY]
+  let found = false
+  for (const key of legacyKeys) {
+    if (await store.get(key).catch(() => null)) found = true
+  }
+  if (!found) return null
+  for (const key of legacyKeys) {
+    await store.remove(key).catch(() => undefined)
+  }
+  const migrated = { ...emptyDocument(), legacyCredentialDiscarded: true }
+  await writeDocument(store, migrated).catch(() => undefined)
+  return migrated
+}
+
+async function readDocument(
+  store: KeyValueStore,
+): Promise<ConnectionsDocument> {
   let raw: string | null
   try {
-    raw = await store.get(CREDENTIAL_KEY)
+    raw = await store.get(CONNECTIONS_KEY)
   } catch {
     throw new SafeOAuthError(
       'storage_failed',
       'The Lunch Money credential could not be read securely.',
     )
   }
-  if (!raw) return null
+  if (!raw) return (await discardLegacyStorage(store)) ?? emptyDocument()
+
   let decoded: unknown
   try {
     decoded = JSON.parse(raw)
   } catch {
     decoded = undefined
   }
-  const state = credentialStateSchema.safeParse(decoded)
-  if (state.success) return state.data
-  await store.remove(CREDENTIAL_KEY).catch(() => undefined)
-  return null
+  const document = connectionsSchema.safeParse(decoded)
+  if (document.success) return document.data
+  await store.remove(CONNECTIONS_KEY).catch(() => undefined)
+  return emptyDocument()
+}
+
+function activeConnection(document: ConnectionsDocument): LunchMoneyConnection {
+  const connection = document.connections.find(
+    ({ accountId, lunchMoneyUserId }) =>
+      accountId === document.activeAccountId &&
+      lunchMoneyUserId === document.activeLunchMoneyUserId,
+  )
+  if (!connection)
+    throw new SafeOAuthError(
+      'credential_not_found',
+      'Connect Lunch Money first.',
+    )
+  return connection
 }
 
 /**
- * After authorization or refresh succeeds, save the complete replacement
- * credential in secure device storage as one value. Do not update its access
- * token, refresh token, expiry, or scope separately.
+ * After authorization identifies the user and account with validated /v2/me,
+ * atomically create or replace the complete connection, make its user active,
+ * and reveal only that user's stored budgets.
  */
-export async function saveCredential(
+export async function upsertConnection(
   store: KeyValueStore,
+  profile: LunchMoneyProfile,
   credential: StoredCredential,
-): Promise<void> {
+): Promise<AuthorizationResult> {
   try {
-    // Security invariant: access, rotated refresh token, expiry, and scope cross secure storage as one value.
-    await writeState(store, { status: 'active', credential })
+    const document = await readDocument(store)
+    const previousActive = document.connections.find(
+      ({ accountId, lunchMoneyUserId }) =>
+        accountId === document.activeAccountId &&
+        lunchMoneyUserId === document.activeLunchMoneyUserId,
+    )
+    const matchingConnection = document.connections.find(
+      ({ accountId, lunchMoneyUserId }) =>
+        accountId === profile.account_id && lunchMoneyUserId === profile.id,
+    )
+    const knownUser = document.connections.some(
+      ({ lunchMoneyUserId }) => lunchMoneyUserId === profile.id,
+    )
+    const outcome: AuthorizationResult['outcome'] =
+      document.connections.length === 0
+        ? 'connected_new_user'
+        : document.activeLunchMoneyUserId !== profile.id
+          ? knownUser
+            ? 'returned_user'
+            : 'switched_user'
+          : matchingConnection
+            ? 'reauthorized_budget'
+            : 'added_budget'
+    const replacement: LunchMoneyConnection = {
+      accountId: profile.account_id,
+      lunchMoneyUserId: profile.id,
+      lunchMoneyUserName: profile.name,
+      budgetName: profile.budget_name,
+      credentialState: { status: 'active', credential },
+    }
+    // Security invariant: only validated /v2/me identity can change the active
+    // user or create a user-and-account-keyed credential record.
+    await writeDocument(store, {
+      ...document,
+      activeAccountId: replacement.accountId,
+      activeLunchMoneyUserId: replacement.lunchMoneyUserId,
+      legacyCredentialDiscarded: false,
+      connections: [
+        ...document.connections.filter(
+          ({ accountId, lunchMoneyUserId }) =>
+            accountId !== replacement.accountId ||
+            lunchMoneyUserId !== replacement.lunchMoneyUserId,
+        ),
+        replacement,
+      ],
+    })
+    const result = {
+      budgetName: replacement.budgetName,
+      lunchMoneyUserName: replacement.lunchMoneyUserName,
+      visibleBudgetCount:
+        document.connections.filter(
+          ({ lunchMoneyUserId, accountId }) =>
+            lunchMoneyUserId === replacement.lunchMoneyUserId &&
+            accountId !== replacement.accountId,
+        ).length + 1,
+    }
+    switch (outcome) {
+      case 'switched_user':
+        return {
+          ...result,
+          outcome,
+          previousLunchMoneyUserName:
+            previousActive?.lunchMoneyUserName ?? null,
+        }
+      case 'connected_new_user':
+      case 'added_budget':
+      case 'reauthorized_budget':
+      case 'returned_user':
+        return { ...result, outcome }
+    }
   } catch {
     throw new SafeOAuthError(
       'storage_failed',
@@ -86,22 +264,14 @@ export async function saveCredential(
   }
 }
 
-/**
- * Load a credential only inside the action that calls the API, refreshes, or
- * revokes access. Returns an active credential or throws a UI-safe error; do
- * not copy the returned tokens into React or other presentation state.
- */
+/** Load only the active validated user's active-budget credential. */
 export async function loadCredential(
   store: KeyValueStore,
   clock: Clock,
   options: { allowExpired?: boolean } = {},
 ): Promise<StoredCredential> {
-  const state = await readState(store)
-  if (!state)
-    throw new SafeOAuthError(
-      'credential_not_found',
-      'Connect Lunch Money first.',
-    )
+  const document = await readDocument(store)
+  const state = activeConnection(document).credentialState
   if (state.status !== 'active')
     throw new SafeOAuthError(
       'reauthorization_required',
@@ -109,7 +279,7 @@ export async function loadCredential(
     )
   if (!options.allowExpired && state.credential.expiresAt <= clock.now()) {
     if (!state.credential.refreshToken)
-      await store.remove(CREDENTIAL_KEY).catch(() => undefined)
+      await removeActiveConnection(store).catch(() => undefined)
     throw new SafeOAuthError(
       'credential_expired',
       state.credential.refreshToken
@@ -120,44 +290,90 @@ export async function loadCredential(
   return state.credential
 }
 
-/**
- * Use this when rendering the screen. It returns only whether the app is
- * connected and whether refresh is available, never the stored tokens.
- */
-export async function readCredentialSummary(
+/** Return only summaries owned by the active validated Lunch Money user. */
+export async function readConnectionSummary(
   store: KeyValueStore,
-): Promise<{ connected: boolean; refreshAvailable: boolean }> {
-  const state = await readState(store)
+): Promise<ConnectionStatus> {
+  const document = await readDocument(store)
+  const visible = document.connections
+    .filter(
+      ({ lunchMoneyUserId }) =>
+        lunchMoneyUserId === document.activeLunchMoneyUserId,
+    )
+    .sort((left, right) => left.accountId - right.accountId)
+  const active = visible.find(
+    ({ accountId }) => accountId === document.activeAccountId,
+  )
   return {
-    connected: state?.status === 'active',
-    refreshAvailable:
-      state?.status === 'active' && Boolean(state.credential.refreshToken),
+    activeAccountId: active?.accountId ?? null,
+    activeLunchMoneyUserId: document.activeLunchMoneyUserId,
+    activeLunchMoneyUserName: active?.lunchMoneyUserName ?? null,
+    legacyCredentialDiscarded: document.legacyCredentialDiscarded,
+    connections: visible.map((connection) => ({
+      accountId: connection.accountId,
+      lunchMoneyUserId: connection.lunchMoneyUserId,
+      lunchMoneyUserName: connection.lunchMoneyUserName,
+      budgetName: connection.budgetName,
+      active: connection.accountId === document.activeAccountId,
+      connected: connection.credentialState.status === 'active',
+      refreshAvailable:
+        connection.credentialState.status === 'active' &&
+        Boolean(connection.credentialState.credential.refreshToken),
+    })),
   }
 }
 
-/**
- * Before refreshing, check whether an earlier refresh left the credential
- * unusable. Returns only the reason the user must reconnect, never token data.
- */
+/** Select only a budget owned by the currently active validated user. */
+export async function selectActiveConnection(
+  store: KeyValueStore,
+  accountId: number,
+): Promise<void> {
+  const document = await readDocument(store)
+  if (
+    !document.connections.some(
+      (connection) =>
+        connection.accountId === accountId &&
+        connection.lunchMoneyUserId === document.activeLunchMoneyUserId,
+    )
+  )
+    throw new SafeOAuthError(
+      'credential_not_found',
+      'That Lunch Money budget is not available for the active user.',
+    )
+  try {
+    await writeDocument(store, { ...document, activeAccountId: accountId })
+  } catch {
+    throw new SafeOAuthError(
+      'storage_failed',
+      'The active Lunch Money budget could not be changed securely.',
+    )
+  }
+}
+
 export async function readReauthorizationReason(
   store: KeyValueStore,
 ): Promise<'invalid_grant' | 'replacement_not_saved' | undefined> {
-  const state = await readState(store)
-  if (state?.status === 'refreshing') return 'replacement_not_saved'
-  if (state?.status !== 'reauthorization_required') return undefined
+  const state = activeConnection(await readDocument(store)).credentialState
+  if (state.status === 'refreshing') return 'replacement_not_saved'
+  if (state.status !== 'reauthorization_required') return undefined
   return state.reason === 'invalid_grant'
     ? 'invalid_grant'
     : 'replacement_not_saved'
 }
 
-/**
- * Immediately before sending a refresh token, mark the saved credential as
- * unusable. If the app stops mid-request, it must ask the user to reconnect
- * instead of sending that potentially consumed refresh token again.
- */
 export async function beginRefresh(store: KeyValueStore): Promise<void> {
   try {
-    await writeState(store, { status: 'refreshing' })
+    const document = await readDocument(store)
+    const active = activeConnection(document)
+    await writeDocument(store, {
+      ...document,
+      connections: document.connections.map((connection) =>
+        connection.accountId === active.accountId &&
+        connection.lunchMoneyUserId === active.lunchMoneyUserId
+          ? { ...connection, credentialState: { status: 'refreshing' } }
+          : connection,
+      ),
+    })
   } catch {
     throw new SafeOAuthError(
       'storage_failed',
@@ -166,10 +382,6 @@ export async function beginRefresh(store: KeyValueStore): Promise<void> {
   }
 }
 
-/**
- * When refresh cannot safely continue, discard the unusable credential and
- * remember only why the app must ask the user to connect again.
- */
 export async function requireReauthorization(
   store: KeyValueStore,
   reason: Extract<
@@ -178,22 +390,68 @@ export async function requireReauthorization(
   >['reason'],
 ): Promise<void> {
   try {
-    await writeState(store, { status: 'reauthorization_required', reason })
+    const document = await readDocument(store)
+    const active = activeConnection(document)
+    await writeDocument(store, {
+      ...document,
+      connections: document.connections.map((connection) =>
+        connection.accountId === active.accountId &&
+        connection.lunchMoneyUserId === active.lunchMoneyUserId
+          ? {
+              ...connection,
+              credentialState: { status: 'reauthorization_required', reason },
+            }
+          : connection,
+      ),
+    })
   } catch {
-    await store.remove(CREDENTIAL_KEY).catch(() => undefined)
+    // A failed terminal-state write must not erase unrelated connections.
   }
 }
 
+export async function replaceActiveCredential(
+  store: KeyValueStore,
+  credential: StoredCredential,
+): Promise<void> {
+  const document = await readDocument(store)
+  const active = activeConnection(document)
+  await writeDocument(store, {
+    ...document,
+    connections: document.connections.map((connection) =>
+      connection.accountId === active.accountId &&
+      connection.lunchMoneyUserId === active.lunchMoneyUserId
+        ? { ...connection, credentialState: { status: 'active', credential } }
+        : connection,
+    ),
+  })
+}
+
 /**
- * Use for the Local reset action. Removes credentials from this device without
- * contacting Lunch Money, so it does not revoke access remotely.
+ * Remove only the active connection. Fallback is limited to the same validated
+ * user; removing that user's final budget exposes no other user's connection.
  */
-export async function clearLocalCredential(
+export async function removeActiveConnection(
   store: KeyValueStore,
 ): Promise<void> {
   try {
-    // Security invariant: local reset is not represented as remote revocation.
-    await store.remove(CREDENTIAL_KEY)
+    const document = await readDocument(store)
+    const active = activeConnection(document)
+    const connections = document.connections.filter(
+      ({ accountId, lunchMoneyUserId }) =>
+        accountId !== active.accountId ||
+        lunchMoneyUserId !== active.lunchMoneyUserId,
+    )
+    const fallback = connections
+      .filter(
+        ({ lunchMoneyUserId }) =>
+          lunchMoneyUserId === document.activeLunchMoneyUserId,
+      )
+      .sort((left, right) => left.accountId - right.accountId)[0]
+    await writeDocument(store, {
+      ...document,
+      activeAccountId: fallback?.accountId ?? null,
+      connections,
+    })
   } catch {
     throw new SafeOAuthError(
       'storage_failed',

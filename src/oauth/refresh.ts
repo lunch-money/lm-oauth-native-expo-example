@@ -2,8 +2,8 @@ import {
   beginRefresh,
   loadCredential,
   readReauthorizationReason,
+  replaceActiveCredential,
   requireReauthorization,
-  saveCredential,
 } from './credential-storage'
 import { RefreshProtocolError, SafeOAuthError } from './errors'
 import type {
@@ -52,7 +52,7 @@ async function restoreAfterTransientFailure(
   current: StoredCredential,
 ): Promise<never> {
   try {
-    await saveCredential(store, current)
+    await replaceActiveCredential(store, current)
   } catch {
     await requireReauthorization(store, 'replacement_not_saved')
     throw new SafeOAuthError(
@@ -121,7 +121,7 @@ export async function refreshCredential(input: {
 
     try {
       // Security invariant: SecureStore replaces access, rotated refresh, expiry, and scope together.
-      await saveCredential(input.store, replacement)
+      await replaceActiveCredential(input.store, replacement)
       return { status: 'refreshed' } as const
     } catch {
       await requireReauthorization(input.store, 'replacement_not_saved')

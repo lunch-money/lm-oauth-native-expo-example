@@ -148,9 +148,9 @@ environment, set `EXPO_PUBLIC_LUNCH_MONEY_API_BASE_URL` to the exact URL supplie
 by Lunch Money support. The client registration and API base URL must belong to
 the same environment.
 
-As an equivalent local option, copy [`config.example`](../config.example) to
-`.env.local`, replace the placeholders, and run the commands below. Expo loads
-the file automatically. Git ignores `.env.local`.
+As an equivalent local option, copy [`env.example`](../env.example) to `.env`,
+replace the placeholders, and run the commands below. Expo loads the file
+automatically. Git ignores `.env`.
 
 Values with `EXPO_PUBLIC_` are compiled into the application. Never put a client
 secret, token, code, or verifier in them. Native clients have no client secret.
@@ -241,9 +241,42 @@ send a `scope` parameter; Lunch Money uses the client's immutable registered set
 
 After approval, Lunch Money returns to the exact registered URI. The app deletes
 the pending attempt before checking the callback, rejects mismatch, expiry, or
-replay, and exchanges the code with `client_id` and the PKCE verifier. There is
-no client secret or Authorization header. The five-minute attempt expiry is this
-sample's policy, not a Lunch Money token lifetime.
+replay, and exchanges the code with `client_id` and the PKCE verifier. Token
+exchange alone is not a completed connection. The app then calls and strictly
+validates `/v2/me`, treats its `id` and `name` as the active Lunch Money user,
+uses the (`id`, `account_id`) pair to create or replace that budget's complete
+secure connection,
+and only then shows connected UI. There is no client secret or Authorization
+header. The five-minute attempt expiry is this sample's policy, not a Lunch
+Money token lifetime.
+
+To connect another budget, choose **Authorize another budget** and approve it in
+the system browser. The first connection remains stored. The **Active budget**
+control switches among already-authorized connections for that validated user
+without opening OAuth. Duplicate visible budget names remain separate and show
+their numeric account IDs for local disambiguation. The newest authorization
+becomes active; authorizing an existing (`id`, `account_id`) pair replaces that
+connection in place rather than creating a duplicate.
+
+The system browser may reuse login cookies, show a login page, or let the person
+switch users. The client assumes none of those paths proves identity. If a new
+authorization identifies a different Lunch Money user, that user's budget
+becomes active and only that user's stored budgets are shown. Other users'
+connections may remain securely stored but hidden and cannot be selected. A
+later authorization for a previously stored user reveals only that user's
+budgets again. This is not application-user or shared-device isolation.
+
+Once connected, the screen reports `<User name> is connected. X authorized
+budget(s).` The count includes only the visible active user's budgets. One
+budget appears as non-interactive green text; multiple budgets use the same
+green section as a compact control that opens a native modal selector. Choosing
+an option immediately changes the active budget and dismisses the modal; there
+is no separate Switch button.
+
+Two Lunch Money users can separately authorize the same shared `account_id`.
+Their credential records remain distinct because local identity uses the
+validated (`id`, `account_id`) pair. Only the active validated user's record is
+ever exposed or operated on.
 
 To test restart behavior, begin authorization, suspend or terminate the app,
 finish consent, and open the callback in the installed development build. The
@@ -252,7 +285,8 @@ authorization; the abandoned attempt is removed safely.
 
 ## 6. Call `/v2/me`
 
-Choose **Call /v2/me**. The app loads the access token only inside the action,
+Choose **Call /v2/me**. The app loads only the active budget's access token
+inside the action,
 sends it in the bearer header, validates every field against Lunch Money's
 documented `userObject`, and displays only the validated profile. A `403` means
 the registered client is missing `me:read`; because scopes are immutable, use a
@@ -265,7 +299,8 @@ If you registered `offline_access`, choose **Refresh access token**, then choose
 a refresh token.
 
 Lunch Money rotates both credentials after a successful refresh. The sample
-uses `expo-auth-session` to send the refresh request as a public client, requires
+uses `expo-auth-session` to send the active connection's refresh request as a
+public client, requires
 a new refresh token in the response, and replaces the access token, refresh
 token, expiry, and scope together in secure storage. It durably marks the old
 credential unusable before the request so an app termination or failed
@@ -275,27 +310,36 @@ incomplete rotated response requires authorization again.
 The sample allows immediate refresh for teaching. A production application
 normally refreshes based on expiration or a rejected API request and must
 coordinate every foreground, background, and extension execution context that
-could use the same refresh token.
+could use the same refresh token. Refresh failure and reauthorization state are
+confined to the active connection.
 
 If you registered only `me:read`, skip this step.
 
 ## 8. Revoke, verify, and authorize again
 
-Choose **Revoke and verify**. When a refresh token exists, the app revokes it to
-end continuing access; otherwise it revokes the access token. It then calls
+Choose **Disconnect active budget**. When a refresh token exists, the app revokes the
+active connection's refresh token to end continuing access; otherwise it
+revokes that connection's access token. It then calls
 `/v2/me` with the old access token and removes the local credential only after
-Lunch Money returns `401`.
+Lunch Money returns `401`. Other connected budgets are unchanged; the sample
+selects the remaining connection with the lowest numeric account ID only when
+it belongs to the same active Lunch Money user. Removing that user's final
+budget shows a disconnected state rather than revealing another stored user.
 An ambiguous failure retains the credential and displays a redacted error so you
 can investigate without falsely reporting success.
 
-Choose **Connect Lunch Money** again and repeat the flow.
+Choose **Authorize another budget** or **Connect Lunch Money** and repeat the
+flow. Reauthorization replaces the matching local account record. It does not,
+by itself, assert that an older remote grant was revoked.
 
 ## 9. Demonstrate local reset
 
-After authorizing again, choose **Local reset only**. This deletes the device
-credential but makes no revocation request. The remote authorization may remain
-active. This distinction matters: deleting local state is not logout from Lunch
-Money and cannot invalidate a bearer token that was copied or retained elsewhere.
+After authorizing again, choose **Forget local credential only** and confirm the
+warning. This deletes only the active device connection but makes no revocation
+request. Other same-user connections remain available, hidden users remain
+hidden, and the remote authorization remains active. This distinction matters:
+deleting local state is not logout from Lunch Money and cannot invalidate a
+bearer token that was copied or retained elsewhere.
 For a clean demonstration, revoke through Lunch Money Connected Apps afterward.
 
 ## Prerequisite troubleshooting

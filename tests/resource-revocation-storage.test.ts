@@ -1,7 +1,8 @@
 import {
-  clearLocalCredential,
   loadCredential,
-  saveCredential,
+  readConnectionSummary,
+  removeActiveConnection,
+  upsertConnection,
 } from '../src/oauth/credential-storage'
 import { readLunchMoneyProfile } from '../src/oauth/lunch-money-api'
 import { revokeAndVerify } from '../src/oauth/revocation'
@@ -45,7 +46,7 @@ describe('credential, resource, revocation, and reset behavior', () => {
   it('drops expired stored credentials', async () => {
     const store = new MemoryStore()
     const clock = fakeClock(2000)
-    await saveCredential(store, {
+    await upsertConnection(store, profile, {
       accessToken: 'fake-token',
       expiresAt: 1000,
       scope: 'me:read',
@@ -54,14 +55,17 @@ describe('credential, resource, revocation, and reset behavior', () => {
     await expect(loadCredential(store, clock)).rejects.toMatchObject({
       code: 'credential_expired',
     })
-    expect(store.values.size).toBe(0)
+    await expect(readConnectionSummary(store)).resolves.toMatchObject({
+      activeAccountId: null,
+      connections: [],
+    })
   })
 
   it('turns secure credential storage failures into redacted errors', async () => {
     const store = new MemoryStore()
     store.fail = true
     await expect(
-      saveCredential(store, {
+      upsertConnection(store, profile, {
         accessToken: 'fake-token',
         expiresAt: 9999,
         scope: 'me:read',
@@ -139,14 +143,17 @@ describe('credential, resource, revocation, and reset behavior', () => {
   it('local reset performs no HTTP request', async () => {
     const store = new MemoryStore()
     const fetcher = jest.fn()
-    await saveCredential(store, {
+    await upsertConnection(store, profile, {
       accessToken: 'fake-token',
       expiresAt: 9999,
       scope: 'me:read',
       tokenType: 'Bearer',
     })
-    await clearLocalCredential(store)
-    expect(store.values.size).toBe(0)
+    await removeActiveConnection(store)
+    await expect(readConnectionSummary(store)).resolves.toMatchObject({
+      activeAccountId: null,
+      connections: [],
+    })
     expect(fetcher).not.toHaveBeenCalled()
   })
 })
