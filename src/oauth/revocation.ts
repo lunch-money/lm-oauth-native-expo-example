@@ -32,8 +32,8 @@ export async function revokeAndVerify(input: {
         Authorization: `Bearer ${input.accessToken}`,
       },
     })
-    // Security invariant: the caller deletes the local credential only after
-    // /v2/me rejects the old access token with HTTP 401.
+    // Let the caller delete the local credential only after /v2/me rejects the
+    // old access token with HTTP 401.
     if (verification.status !== 401) throw new Error()
   } catch {
     throw new SafeOAuthError(

@@ -216,8 +216,8 @@ export async function upsertConnection(
       budgetName: profile.budget_name,
       credentialState: { status: 'active', credential },
     }
-    // Security invariant: only identity checked by /v2/me can change the active
-    // user or save a credential under a Lunch Money user ID and account ID.
+    // Change the active user or save credentials only after /v2/me identifies
+    // the Lunch Money user ID and account ID they belong to.
     await writeDocument(store, {
       ...document,
       activeAccountId: replacement.accountId,

@@ -36,7 +36,8 @@ export const expoOAuthBrowser: OAuthBrowser = {
         'A secure authorization request could not be prepared.',
       )
     }
-    // Security invariant: Expo creates the random state and S256 PKCE values that bind the browser return and code to this app.
+    // Let Expo create the random state and S256 PKCE values that tie the browser
+    // return and authorization code to this app.
     return {
       authorizationUrl,
       state: request.state,
@@ -89,7 +90,9 @@ export const expoTokenRefresher: TokenRefresher = {
       ) {
         throw new RefreshProtocolError('malformed_response')
       }
-      // Security invariant: do not use TokenResponse.refreshAsync here; it can keep an old refresh token when Lunch Money does not return a replacement.
+      // Do not use TokenResponse.refreshAsync here. It can keep the old refresh
+      // token when Lunch Money does not return a replacement, but this sample
+      // requires every successful refresh to rotate that token.
       return {
         accessToken: response.accessToken,
         expiresAt: input.now + response.expiresIn * 1000,

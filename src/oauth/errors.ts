@@ -77,7 +77,8 @@ export class RefreshProtocolError extends Error {
  * or response details in them.
  */
 export function safeErrorMessage(error: unknown): string {
-  // Security invariant: unknown exception text may contain callback or Lunch Money response data and is never displayed.
+  // Do not display unknown exception text because it may contain callback or
+  // Lunch Money response data.
   return error instanceof SafeOAuthError
     ? error.message
     : 'Lunch Money OAuth could not complete. Please try again.'

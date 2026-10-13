@@ -41,7 +41,8 @@ export function validateCallback(
       'The authorization callback is malformed.',
     )
   }
-  // Security invariant: a callback for another scheme, authority, or path is never accepted.
+  // Accept only the exact redirect scheme, authority, and path registered for
+  // this authorization attempt.
   if (!sameRedirect(callback, expected))
     throw new SafeOAuthError(
       'callback_invalid',
@@ -126,7 +127,8 @@ export async function exchangeAuthorizationCode(input: {
       tokenType: token.token_type,
     }
   } catch {
-    // Security invariant: Lunch Money response bodies, codes, verifiers, and tokens never enter the displayed error.
+    // Keep Lunch Money response bodies, codes, verifiers, and tokens out of the
+    // error shown on screen.
     throw new SafeOAuthError(
       'provider_failure',
       'The authorization code could not be exchanged.',
