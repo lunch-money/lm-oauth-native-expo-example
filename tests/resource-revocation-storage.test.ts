@@ -4,11 +4,13 @@ import {
   removeActiveConnection,
   upsertConnection,
 } from '../src/oauth/credential-storage'
+import { safeOAuthErrorDiagnostic } from '../src/oauth/errors'
 import { readLunchMoneyProfile } from '../src/oauth/lunch-money-api'
 import { revokeAndVerify } from '../src/oauth/revocation'
+import type { LunchMoneyProfile } from '../src/oauth/types'
 import { MemoryStore, fakeClock } from './fakes'
 
-const profile = {
+const profile: LunchMoneyProfile = {
   name: 'Demo User',
   email: 'user@example.test',
   id: 1,
@@ -19,28 +21,105 @@ const profile = {
 }
 
 describe('credential, resource, revocation, and reset behavior', () => {
-  it('validates the documented strict /v2/me schema and insufficient scope', async () => {
+  it('uses the SDK to call /v2/me and returns additive response properties', async () => {
+    const fetcher = jest
+      .fn()
+      .mockResolvedValue(Response.json({ ...profile, added_later: true }))
+
     await expect(
-      readLunchMoneyProfile(
+      readLunchMoneyProfile(new URL('https://api.test'), 'fake-token', fetcher),
+    ).resolves.toEqual({ ...profile, added_later: true })
+
+    const request = fetcher.mock.lastCall?.[0]
+    expect(request).toBeInstanceOf(Request)
+    if (!(request instanceof Request)) throw new Error('Expected SDK request.')
+    expect(request.url).toBe('https://api.test/v2/me')
+    expect(request.headers.get('authorization')).toBe('Bearer fake-token')
+  })
+
+  it.each(Object.keys(profile))(
+    'rejects a /v2/me response missing required property %s',
+    async (missingField) => {
+      const incomplete = Object.fromEntries(
+        Object.entries(profile).filter(([field]) => field !== missingField),
+      )
+      await expect(
+        readLunchMoneyProfile(
+          new URL('https://api.test'),
+          'fake-token',
+          jest.fn().mockResolvedValue(Response.json(incomplete)),
+        ),
+      ).rejects.toMatchObject({
+        code: 'resource_failure',
+        diagnostic: {
+          failureReason: 'invalid_response',
+          httpStatus: 200,
+        },
+      })
+    },
+  )
+
+  it('classifies HTTP failures without exposing the response body or token', async () => {
+    const response = new Response('private upstream details', { status: 401 })
+    let failure: unknown
+    try {
+      await readLunchMoneyProfile(
         new URL('https://api.test'),
-        'fake-token',
-        jest.fn().mockResolvedValue(Response.json(profile)),
-      ),
-    ).resolves.toEqual(profile)
-    await expect(
-      readLunchMoneyProfile(
-        new URL('https://api.test'),
-        'fake-token',
-        jest.fn().mockResolvedValue(Response.json({ ...profile, extra: true })),
-      ),
-    ).rejects.toMatchObject({ code: 'resource_failure' })
+        'private-token',
+        jest.fn().mockResolvedValue(response),
+      )
+    } catch (error) {
+      failure = error
+    }
+
+    expect(failure).toMatchObject({
+      code: 'resource_failure',
+      diagnostic: { failureReason: 'http_error', httpStatus: 401 },
+    })
+    const diagnostic = JSON.stringify(safeOAuthErrorDiagnostic(failure))
+    expect(diagnostic).toBe(
+      JSON.stringify({
+        errorCode: 'resource_failure',
+        failureReason: 'http_error',
+        httpStatus: 401,
+      }),
+    )
+    expect(diagnostic).not.toContain('private-token')
+    expect(diagnostic).not.toContain('private upstream details')
+  })
+
+  it('reports missing me:read as a safe HTTP failure', async () => {
     await expect(
       readLunchMoneyProfile(
         new URL('https://api.test'),
         'fake-token',
         jest.fn().mockResolvedValue(new Response(null, { status: 403 })),
       ),
-    ).rejects.toMatchObject({ code: 'insufficient_scope' })
+    ).rejects.toMatchObject({
+      code: 'insufficient_scope',
+      diagnostic: { failureReason: 'http_error', httpStatus: 403 },
+    })
+  })
+
+  it('distinguishes invalid JSON from a request that never received a response', async () => {
+    await expect(
+      readLunchMoneyProfile(
+        new URL('https://api.test'),
+        'fake-token',
+        jest.fn().mockResolvedValue(new Response('not json')),
+      ),
+    ).rejects.toMatchObject({
+      diagnostic: { failureReason: 'invalid_json', httpStatus: 200 },
+    })
+    await expect(
+      readLunchMoneyProfile(
+        new URL('https://api.test'),
+        'fake-token',
+        jest.fn().mockRejectedValue(new Error('private network detail')),
+      ),
+    ).rejects.toMatchObject({
+      diagnostic: { failureReason: 'network_error' },
+    })
   })
 
   it('drops expired stored credentials', async () => {

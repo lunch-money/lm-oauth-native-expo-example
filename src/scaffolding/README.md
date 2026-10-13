@@ -14,3 +14,9 @@ summary clear previously displayed profile data. The connected identity and
 budget control remain absent until authorization has exchanged the code and
 validated `/v2/me`. Multiple visible budgets use a compact accessible modal;
 selection applies immediately.
+
+While a new authorization is being checked, the screen hides any identity from
+a previous connection. If `/v2/me` fails, the safe error remains visible and
+the old identity stays hidden for the rest of that screen session. Its
+credential remains in secure storage and is available after a successful retry
+or app restart.

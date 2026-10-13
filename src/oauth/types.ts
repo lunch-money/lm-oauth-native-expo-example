@@ -1,3 +1,5 @@
+import type { User } from '@lunch-money/lunch-money-js-v2'
+
 export interface Clock {
   now(): number
 }
@@ -102,12 +104,5 @@ export interface OAuthBrowser {
   open(authorizationUrl: string, redirectUri: string): Promise<string>
 }
 
-export interface LunchMoneyProfile {
-  name: string
-  email: string
-  id: number
-  account_id: number
-  budget_name: string
-  primary_currency: string
-  api_key_label: string | null
-}
+/** The documented user returned by the Lunch Money SDK for `GET /v2/me`. */
+export type LunchMoneyProfile = User

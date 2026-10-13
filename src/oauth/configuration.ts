@@ -67,7 +67,8 @@ function configurationError(message: string): SafeOAuthError {
 /**
  * Ask Lunch Money which URLs the app should use for sign-in, token requests,
  * and revocation. Call this before opening the browser instead of hard-coding
- * those URLs. Returns only validated HTTPS endpoints and throws a UI-safe error.
+ * those URLs. Returns only validated HTTPS endpoints and throws an error that is
+ * safe to show on screen.
  */
 export async function discoverAuthorizationServer(
   apiBaseUrl: URL,

@@ -24,6 +24,7 @@
     "check": "npm run format:check && npm run lint && npm run typecheck && npm test && npm run build"
   },
   "dependencies": {
+    "@lunch-money/lunch-money-js-v2": "2.11.1",
     "expo": "~57.0.10",
     "expo-auth-session": "~57.0.6",
     "expo-build-properties": "~57.0.21",

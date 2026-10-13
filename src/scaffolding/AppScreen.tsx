@@ -15,6 +15,7 @@ import {
   createNativeOAuthWorkflow,
   discardAbandonedAuthorization,
   safeErrorMessage,
+  safeOAuthErrorDiagnostic,
   type ConnectionStatus,
   type LunchMoneyProfile,
 } from '../oauth'
@@ -26,8 +27,10 @@ import {
 import { loadPublicConfiguration } from './configuration'
 import {
   authorizationResultMessage,
+  connectionStatusForDisplay,
   connectedStatusText,
   connectionLabel,
+  profileFailureMessage,
 } from './connection-presentation'
 import { secureStore } from './secure-store'
 
@@ -45,6 +48,7 @@ export function AppScreen() {
   const [message, setMessage] = useState('Ready to connect.')
   const [profile, setProfile] = useState<LunchMoneyProfile | null>(null)
   const [budgetSelectorVisible, setBudgetSelectorVisible] = useState(false)
+  const [hideStoredConnections, setHideStoredConnections] = useState(false)
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>(
     emptyConnectionStatus,
   )
@@ -68,16 +72,27 @@ export function AppScreen() {
         return
       setBusy(true)
       setProfile(null)
+      setBudgetSelectorVisible(false)
+      setHideStoredConnections(true)
       setConnectionStatus(emptyConnectionStatus)
       try {
         const result = await workflow.completeCallback(url)
         if (active) {
           const status = await workflow.connectionStatus()
           setConnectionStatus(status)
+          setHideStoredConnections(false)
           setMessage(authorizationResultMessage(result))
         }
       } catch (error) {
-        if (active) setMessage(safeErrorMessage(error))
+        if (active) {
+          console.error(
+            JSON.stringify({
+              event: 'oauth.callback.failed',
+              ...safeOAuthErrorDiagnostic(error),
+            }),
+          )
+          setMessage(safeErrorMessage(error))
+        }
       } finally {
         if (active) setBusy(false)
       }
@@ -104,6 +119,8 @@ export function AppScreen() {
   async function act<T>(
     action: () => Promise<T>,
     success: string | ((result: T) => string),
+    failureEvent?: string,
+    failureMessage?: (error: unknown) => string,
   ) {
     setBusy(true)
     setProfile(null)
@@ -111,7 +128,14 @@ export function AppScreen() {
       const result = await action()
       setMessage(typeof success === 'function' ? success(result) : success)
     } catch (error) {
-      setMessage(safeErrorMessage(error))
+      if (failureEvent)
+        console.error(
+          JSON.stringify({
+            event: failureEvent,
+            ...safeOAuthErrorDiagnostic(error),
+          }),
+        )
+      setMessage(failureMessage?.(error) ?? safeErrorMessage(error))
     } finally {
       const status = await workflow
         .connectionStatus()
@@ -121,10 +145,14 @@ export function AppScreen() {
     }
   }
 
-  const connections = connectionStatus.connections
+  const displayedConnectionStatus = connectionStatusForDisplay(
+    connectionStatus,
+    hideStoredConnections,
+  )
+  const connections = displayedConnectionStatus.connections
   const activeConnection = connections.find(({ active }) => active)
   const refreshAvailable = Boolean(activeConnection?.refreshAvailable)
-  const connectedStatus = connectedStatusText(connectionStatus)
+  const connectedStatus = connectedStatusText(displayedConnectionStatus)
 
   async function confirmForgetLocalCredential(): Promise<boolean> {
     return new Promise((resolve) => {
@@ -190,10 +218,18 @@ export function AppScreen() {
               : 'Connect Lunch Money'
           }
           onPress={() =>
-            act(async () => {
-              setConnectionStatus(emptyConnectionStatus)
-              return workflow.authorize()
-            }, authorizationResultMessage)
+            act(
+              async () => {
+                setBudgetSelectorVisible(false)
+                setHideStoredConnections(true)
+                setConnectionStatus(emptyConnectionStatus)
+                const result = await workflow.authorize()
+                setHideStoredConnections(false)
+                return result
+              },
+              authorizationResultMessage,
+              'oauth.authorization.failed',
+            )
           }
         />
         {activeConnection ? (
@@ -201,9 +237,14 @@ export function AppScreen() {
             disabled={busy}
             label="Call /v2/me"
             onPress={() =>
-              act(async () => {
-                setProfile(await workflow.readProfile())
-              }, 'The validated /v2/me profile is shown below.')
+              act(
+                async () => {
+                  setProfile(await workflow.readProfile())
+                },
+                'The validated /v2/me profile is shown below.',
+                'oauth.me.failed',
+                (error) => profileFailureMessage(error, refreshAvailable),
+              )
             }
           />
         ) : null}

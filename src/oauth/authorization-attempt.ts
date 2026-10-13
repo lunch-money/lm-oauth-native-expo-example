@@ -50,7 +50,8 @@ export async function consumePendingAuthorization(
   let raw: string | null
   try {
     raw = await store.get(ATTEMPT_KEY)
-    // Security invariant: one-time consumption happens before any callback success or failure branch.
+    // Delete the attempt before processing the callback so the same browser
+    // return cannot be submitted twice.
     await store.remove(ATTEMPT_KEY)
   } catch {
     throw new SafeOAuthError(

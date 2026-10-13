@@ -3,6 +3,9 @@ import { upsertConnection } from '../src/oauth/credential-storage'
 import { createNativeOAuthWorkflow } from '../src/oauth/workflow'
 import { MemoryStore, fakeAttempt, fakeClock } from './fakes'
 
+const requestUrl = (input: RequestInfo | URL) =>
+  input instanceof Request ? input.url : String(input)
+
 describe('native OAuth workflow callback coordination', () => {
   it('completes the same concurrently delivered callback only once', async () => {
     const store = new MemoryStore()
@@ -14,7 +17,7 @@ describe('native OAuth workflow callback coordination', () => {
       release = resolve
     })
     const fetcher = jest.fn(async (input: RequestInfo | URL) => {
-      if (String(input).endsWith('/v2/me'))
+      if (requestUrl(input).endsWith('/v2/me'))
         return Response.json({
           name: 'Demo User',
           email: 'user@example.test',
@@ -96,7 +99,7 @@ describe('native OAuth workflow callback coordination', () => {
     const clock = fakeClock()
     const callbackUrl = `${fakeAttempt.redirectUri}?code=fake-code&state=${fakeAttempt.state}`
     const fetcher = jest.fn(async (input: RequestInfo | URL) => {
-      const url = String(input)
+      const url = requestUrl(input)
       if (url.endsWith('/.well-known/oauth-authorization-server'))
         return Response.json({
           authorization_endpoint: 'https://oauth.test/authorize',
@@ -152,12 +155,30 @@ describe('native OAuth workflow callback coordination', () => {
     })
   })
 
-  it('does not persist credentials when /v2/me cannot identify the account', async () => {
+  it('keeps the previous stored connection when a new authorization cannot identify the account', async () => {
     const store = new MemoryStore()
     const clock = fakeClock()
-    await savePendingAuthorization(store, clock, fakeAttempt)
     const fetcher = jest
       .fn()
+      .mockResolvedValueOnce(
+        Response.json({
+          access_token: 'previous-access-token',
+          expires_in: 3600,
+          scope: 'me:read',
+          token_type: 'Bearer',
+        }),
+      )
+      .mockResolvedValueOnce(
+        Response.json({
+          name: 'Previous User',
+          email: 'previous@example.test',
+          id: 10,
+          account_id: 20,
+          budget_name: 'Previous budget',
+          primary_currency: 'usd',
+          api_key_label: null,
+        }),
+      )
       .mockResolvedValueOnce(
         Response.json({
           access_token: 'unidentified-access-token',
@@ -183,15 +204,28 @@ describe('native OAuth workflow callback coordination', () => {
       tokenRefresher: { refresh: jest.fn() },
     })
 
+    await savePendingAuthorization(store, clock, fakeAttempt)
+    await workflow.completeCallback(
+      `${fakeAttempt.redirectUri}?code=first-code&state=${fakeAttempt.state}`,
+      'https://oauth.test/token',
+    )
+    const secondAttempt = { ...fakeAttempt, state: 't'.repeat(43) }
+    await savePendingAuthorization(store, clock, secondAttempt)
     await expect(
       workflow.completeCallback(
-        `${fakeAttempt.redirectUri}?code=fake-code&state=${fakeAttempt.state}`,
+        `${secondAttempt.redirectUri}?code=second-code&state=${secondAttempt.state}`,
         'https://oauth.test/token',
       ),
     ).rejects.toMatchObject({ code: 'resource_failure' })
     await expect(workflow.connectionStatus()).resolves.toMatchObject({
-      activeAccountId: null,
-      connections: [],
+      activeAccountId: 20,
+      activeLunchMoneyUserId: 10,
+      connections: [
+        expect.objectContaining({
+          accountId: 20,
+          budgetName: 'Previous budget',
+        }),
+      ],
     })
   })
 
@@ -214,7 +248,7 @@ describe('native OAuth workflow callback coordination', () => {
     ]
     let authorization = 0
     const fetcher = jest.fn(async (input: RequestInfo | URL) => {
-      if (String(input).endsWith('/v2/me')) {
+      if (requestUrl(input).endsWith('/v2/me')) {
         const selected = profiles[authorization]
         authorization += 1
         return Response.json({
@@ -363,7 +397,7 @@ describe('native OAuth workflow callback coordination', () => {
       await connection(10, 'first-access-token')
       await connection(20, 'second-access-token')
       const fetcher = jest.fn(async (input: RequestInfo | URL) => {
-        const url = String(input)
+        const url = requestUrl(input)
         if (url.endsWith('/.well-known/oauth-authorization-server'))
           return Response.json({
             authorization_endpoint: 'https://oauth.test/authorize',

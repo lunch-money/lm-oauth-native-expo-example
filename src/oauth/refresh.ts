@@ -95,7 +95,8 @@ export async function refreshCredential(input: {
     if (!current.refreshToken)
       return { status: 'refresh_not_available' } as const
 
-    // Security invariant: a restart after this write cannot replay the refresh token.
+    // Mark the credential as refreshing before sending the request. If the app
+    // restarts, it will not send the same refresh token a second time.
     await beginRefresh(input.store)
     let replacement: StoredCredential
     try {
@@ -120,7 +121,9 @@ export async function refreshCredential(input: {
     }
 
     try {
-      // Security invariant: SecureStore replaces access, rotated refresh, expiry, and scope together.
+      // Replace the access token, rotated refresh token, expiration time, and
+      // scope in one secure-store update so they cannot come from different
+      // refresh responses.
       await replaceActiveCredential(input.store, replacement)
       return { status: 'refreshed' } as const
     } catch {

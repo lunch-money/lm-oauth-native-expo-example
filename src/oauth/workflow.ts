@@ -146,7 +146,8 @@ export function createNativeOAuthWorkflow(dependencies: {
 
     /**
      * Call when the user taps Call /v2/me. It loads the access token only for
-     * the request and returns the validated profile, not the credential.
+     * the request, checks every profile property the sample needs, and returns
+     * the profile without returning the credential.
      */
     async readProfile(): Promise<LunchMoneyProfile> {
       const credential = await loadCredential(credentialStore, clock)

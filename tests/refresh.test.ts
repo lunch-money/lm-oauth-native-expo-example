@@ -10,7 +10,11 @@ import {
   createRefreshCoordinator,
   refreshCredential,
 } from '../src/oauth/refresh'
-import type { StoredCredential, TokenRefresher } from '../src/oauth/types'
+import type {
+  LunchMoneyProfile,
+  StoredCredential,
+  TokenRefresher,
+} from '../src/oauth/types'
 import { MemoryStore, fakeClock } from './fakes'
 
 const current: StoredCredential = {
@@ -27,7 +31,7 @@ const replacement: StoredCredential = {
   scope: 'me:read offline_access',
   tokenType: 'Bearer',
 }
-const profile = {
+const profile: LunchMoneyProfile = {
   name: 'Demo User',
   email: 'user@example.test',
   id: 1,

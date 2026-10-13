@@ -176,9 +176,9 @@ function activeConnection(document: ConnectionsDocument): LunchMoneyConnection {
 }
 
 /**
- * After authorization identifies the user and account with validated /v2/me,
- * atomically create or replace the complete connection, make its user active,
- * and reveal only that user's stored budgets.
+ * After `/v2/me` identifies the user and account, create or replace the whole
+ * connection in one secure-store write. Then make that user active and return
+ * only budgets that belong to the same user.
  */
 export async function upsertConnection(
   store: KeyValueStore,
@@ -216,8 +216,8 @@ export async function upsertConnection(
       budgetName: profile.budget_name,
       credentialState: { status: 'active', credential },
     }
-    // Security invariant: only validated /v2/me identity can change the active
-    // user or create a user-and-account-keyed credential record.
+    // Change the active user or save credentials only after /v2/me identifies
+    // the Lunch Money user ID and account ID they belong to.
     await writeDocument(store, {
       ...document,
       activeAccountId: replacement.accountId,
@@ -264,7 +264,7 @@ export async function upsertConnection(
   }
 }
 
-/** Load only the active validated user's active-budget credential. */
+/** Load the credential for the budget selected under the current `/v2/me` user. */
 export async function loadCredential(
   store: KeyValueStore,
   clock: Clock,
@@ -290,7 +290,7 @@ export async function loadCredential(
   return state.credential
 }
 
-/** Return only summaries owned by the active validated Lunch Money user. */
+/** Return screen-safe summaries only for the user last identified by `/v2/me`. */
 export async function readConnectionSummary(
   store: KeyValueStore,
 ): Promise<ConnectionStatus> {
@@ -323,7 +323,7 @@ export async function readConnectionSummary(
   }
 }
 
-/** Select only a budget owned by the currently active validated user. */
+/** Select a budget only when it belongs to the current `/v2/me` user. */
 export async function selectActiveConnection(
   store: KeyValueStore,
   accountId: number,
@@ -405,7 +405,7 @@ export async function requireReauthorization(
       ),
     })
   } catch {
-    // A failed terminal-state write must not erase unrelated connections.
+    // If this recovery update fails, keep every other user's connection unchanged.
   }
 }
 

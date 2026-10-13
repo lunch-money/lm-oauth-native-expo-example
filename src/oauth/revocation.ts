@@ -1,9 +1,10 @@
 import { SafeOAuthError } from './errors'
 
 /**
- * Call from Disconnect active budget. Ask Lunch Money to revoke the credential, then
- * prove the old access token no longer works. Returns only after that proof;
- * otherwise it throws so the app can retain its local credential and retry.
+ * Call from Disconnect active budget. Ask Lunch Money to revoke the credential,
+ * then check that the old access token no longer works. Returns only after that
+ * check; otherwise it throws so the app can retain its local credential and
+ * retry.
  */
 export async function revokeAndVerify(input: {
   accessToken: string
@@ -31,7 +32,8 @@ export async function revokeAndVerify(input: {
         Authorization: `Bearer ${input.accessToken}`,
       },
     })
-    // Security invariant: local deletion follows only after the old access token is demonstrably rejected.
+    // Let the caller delete the local credential only after /v2/me rejects the
+    // old access token with HTTP 401.
     if (verification.status !== 401) throw new Error()
   } catch {
     throw new SafeOAuthError(

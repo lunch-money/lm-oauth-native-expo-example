@@ -25,7 +25,7 @@ export const expoOAuthBrowser: OAuthBrowser = {
       // satisfies the persisted-attempt validation used across app restarts.
       state: Crypto.randomUUID(),
       usePKCE: true,
-      // Lunch Money applies the client's immutable registered scopes. Do not add `scopes`.
+      // Lunch Money uses the scopes chosen when this client was registered, so this request must not send `scopes`.
     })
     const authorizationUrl = await request.makeAuthUrlAsync({
       authorizationEndpoint: input.authorizationEndpoint,
@@ -36,7 +36,8 @@ export const expoOAuthBrowser: OAuthBrowser = {
         'A secure authorization request could not be prepared.',
       )
     }
-    // Security invariant: expo-auth-session generates unpredictable state and an S256 PKCE verifier/challenge.
+    // Let Expo create the random state and S256 PKCE values that tie the browser
+    // return and authorization code to this app.
     return {
       authorizationUrl,
       state: request.state,
@@ -89,7 +90,9 @@ export const expoTokenRefresher: TokenRefresher = {
       ) {
         throw new RefreshProtocolError('malformed_response')
       }
-      // Security invariant: never use TokenResponse.refreshAsync because it silently reuses a missing rotated token.
+      // Do not use TokenResponse.refreshAsync here. It can keep the old refresh
+      // token when Lunch Money does not return a replacement, but this sample
+      // requires every successful refresh to rotate that token.
       return {
         accessToken: response.accessToken,
         expiresAt: input.now + response.expiresIn * 1000,
