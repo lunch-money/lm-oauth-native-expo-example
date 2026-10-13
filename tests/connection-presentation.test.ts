@@ -1,8 +1,11 @@
 import {
   authorizationResultMessage,
+  connectionStatusForDisplay,
   connectedStatusText,
   connectionLabel,
+  profileFailureMessage,
 } from '../src/scaffolding/connection-presentation'
+import { SafeOAuthError } from '../src/oauth/errors'
 import type { ConnectionStatus } from '../src/oauth'
 import type { ConnectionSummary } from '../src/oauth/types'
 
@@ -28,6 +31,20 @@ const status = (connections: ConnectionSummary[]): ConnectionStatus => ({
 })
 
 describe('connection presentation', () => {
+  it('hides a stored identity without changing the stored connection status', () => {
+    const stored = status([connection(1, 'Personal')])
+
+    expect(connectionStatusForDisplay(stored, true)).toEqual({
+      activeAccountId: null,
+      activeLunchMoneyUserId: null,
+      activeLunchMoneyUserName: null,
+      connections: [],
+      legacyCredentialDiscarded: false,
+    })
+    expect(connectionStatusForDisplay(stored, false)).toBe(stored)
+    expect(stored.connections).toHaveLength(1)
+  })
+
   it('uses the validated user name and singular/plural visible budget count', () => {
     expect(connectedStatusText(status([connection(1, 'Personal')]))).toBe(
       'Demo User is connected. 1 authorized budget.',
@@ -45,6 +62,35 @@ describe('connection presentation', () => {
     expect(connectionLabel(visible[0]!, visible)).toBe('Shared (#1)')
     expect(connectionLabel(visible[1]!, visible)).toBe('Shared (#2)')
     expect(connectionLabel(connection(3, 'Personal'), visible)).toBe('Personal')
+  })
+
+  it('suggests the explicit refresh action after /v2/me returns 401', () => {
+    const error = new SafeOAuthError(
+      'resource_failure',
+      'Lunch Money rejected the /v2/me request.',
+      undefined,
+      { failureReason: 'http_error', httpStatus: 401 },
+    )
+
+    expect(profileFailureMessage(error, true)).toBe(
+      'Lunch Money rejected /v2/me with HTTP 401. The access token may have expired. Use Refresh access token, then call /v2/me again.',
+    )
+    expect(profileFailureMessage(error, false)).toBe(
+      'Lunch Money rejected /v2/me with HTTP 401. The access token may have expired. No refresh token is available for this connection. Authorize Lunch Money again.',
+    )
+  })
+
+  it('keeps the existing safe message for /v2/me failures other than 401', () => {
+    const error = new SafeOAuthError(
+      'resource_failure',
+      'Lunch Money /v2/me could not be reached.',
+      undefined,
+      { failureReason: 'network_error' },
+    )
+
+    expect(profileFailureMessage(error, true)).toBe(
+      'Lunch Money /v2/me could not be reached.',
+    )
   })
 
   it.each([

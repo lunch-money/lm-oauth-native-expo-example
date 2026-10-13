@@ -1,7 +1,31 @@
-import type { AuthorizationResult, ConnectionStatus } from '../oauth'
+import {
+  safeErrorMessage,
+  safeOAuthErrorDiagnostic,
+  type AuthorizationResult,
+  type ConnectionStatus,
+} from '../oauth'
 import type { ConnectionSummary } from '../oauth/types'
 
-/** Format the connected identity only after validated /v2/me data is stored. */
+/**
+ * Hide a previously stored identity while a new authorization is being
+ * checked. The credential stays in secure storage, but showing its user and
+ * budget beside a failure from the new authorization would be misleading.
+ */
+export function connectionStatusForDisplay(
+  status: ConnectionStatus,
+  hideStoredConnections: boolean,
+): ConnectionStatus {
+  if (!hideStoredConnections) return status
+  return {
+    activeAccountId: null,
+    activeLunchMoneyUserId: null,
+    activeLunchMoneyUserName: null,
+    connections: [],
+    legacyCredentialDiscarded: false,
+  }
+}
+
+/** Show a connected user only after `/v2/me` has identified that connection. */
 export function connectedStatusText(status: ConnectionStatus): string | null {
   if (
     !status.activeLunchMoneyUserName ||
@@ -12,7 +36,7 @@ export function connectedStatusText(status: ConnectionStatus): string | null {
   return `${status.activeLunchMoneyUserName} is connected. ${count} authorized ${count === 1 ? 'budget' : 'budgets'}.`
 }
 
-/** Disambiguate only duplicate visible budget names with the provider account ID. */
+/** Add an account ID only when two visible budgets have the same name. */
 export function connectionLabel(
   connection: ConnectionSummary,
   visibleConnections: ConnectionSummary[],
@@ -26,7 +50,27 @@ export function connectionLabel(
     : connection.budgetName
 }
 
-/** Explain authorization identity changes without exposing protocol material. */
+/**
+ * Explain how to recover when the profile request's access token is rejected.
+ * A 401 does not prove that the token merely expired, so the message suggests
+ * the next safe action without claiming a cause. Other failures keep their
+ * existing safe message.
+ */
+export function profileFailureMessage(
+  error: unknown,
+  refreshAvailable: boolean,
+): string {
+  if (safeOAuthErrorDiagnostic(error).httpStatus !== 401)
+    return safeErrorMessage(error)
+
+  const rejected =
+    'Lunch Money rejected /v2/me with HTTP 401. The access token may have expired.'
+  return refreshAvailable
+    ? `${rejected} Use Refresh access token, then call /v2/me again.`
+    : `${rejected} No refresh token is available for this connection. Authorize Lunch Money again.`
+}
+
+/** Describe the authorization result using names and counts safe for the screen. */
 export function authorizationResultMessage(
   result: AuthorizationResult,
 ): string {

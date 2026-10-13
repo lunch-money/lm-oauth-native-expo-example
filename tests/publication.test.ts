@@ -44,18 +44,24 @@ describe('public repository boundaries', () => {
 
   it('clears resource output across authorization and budget transitions', () => {
     const screen = readFileSync('src/scaffolding/AppScreen.tsx', 'utf8')
-    expect(screen).toMatch(
-      /setBusy\(true\)\s+setProfile\(null\)\s+setConnectionStatus\(emptyConnectionStatus\)\s+try \{\s+const result = await workflow\.completeCallback/,
-    )
+    expect(screen).toContain('setHideStoredConnections(true)')
+    expect(screen).toContain('setHideStoredConnections(false)')
+    expect(screen).toContain('connectionStatusForDisplay(')
     expect(screen).toMatch(
       /async function act[\s\S]*setBusy\(true\)\s+setProfile\(null\)/,
     )
-    expect(screen).toMatch(
-      /setConnectionStatus\(emptyConnectionStatus\)\s+return workflow\.authorize\(\)/,
-    )
+    expect(screen).toContain('const result = await workflow.authorize()')
     expect(screen).toContain(
       '() => workflow.selectConnection(connection.accountId)',
     )
+  })
+
+  it('logs only allowlisted OAuth failure diagnostics', () => {
+    const screen = readFileSync('src/scaffolding/AppScreen.tsx', 'utf8')
+    expect(screen).toContain('...safeOAuthErrorDiagnostic(error)')
+    expect(screen).toContain("'oauth.authorization.failed'")
+    expect(screen).toContain("'oauth.me.failed'")
+    expect(screen).not.toContain('JSON.stringify(error)')
   })
 
   it('keeps the local-only forget action explicit and confirmed', () => {

@@ -12,12 +12,12 @@ untrusted until validated.
   after five minutes of sample application policy.
 - Credentials and pending attempts use `expo-secure-store`, not AsyncStorage or
   ordinary preferences.
-- Authorization is not complete after token exchange. The app calls and
-  strictly validates `/v2/me`; only then do its user ID and name establish the
-  active identity and the pair (`id`, `account_id`) identify the local
-  connection. Two identities may therefore hold separate credentials for the
-  same shared account. Browser
-  cookies, tokens, and budget names are never identity keys.
+- Authorization is not complete after token exchange. The SDK calls `/v2/me`,
+  and the app checks the properties it needs; only then do the user ID and name
+  establish the active identity and the pair (`id`, `account_id`) identify the
+  local connection. Two identities may therefore hold separate credentials for
+  the same shared account. Browser cookies, tokens, and budget names are never
+  identity keys.
 - React state receives only connection summaries. Credential sets remain in
   secure storage, summaries for other Lunch Money users remain hidden, and
   credentials are loaded only for an active-budget operation.
@@ -26,10 +26,13 @@ untrusted until validated.
   set atomically without changing another account.
 - Tokens, codes, verifiers, callback URLs, raw responses, and exception text are
   absent from logs, analytics, screenshots, normal UI state, and safe errors.
+  Failure logs contain only an error category, a network/HTTP/JSON/response
+  reason, and an HTTP status when one is available.
 - Authorization actions return only typed, display-safe outcomes after
   `/v2/me` succeeds. No connected identity, budget count, or selector is shown
   before that validation completes.
-- `/v2/me` is displayed only after strict documented-schema validation.
+- `/v2/me` is displayed only after the sample confirms that every user and
+  budget property needed by the screen is present.
 - Revocation and local reset apply only to the active connection and are
   distinct. Reset cannot invalidate remote access. Reauthorizing an existing
   account replaces its local credential record but does not claim the previous

@@ -82,6 +82,14 @@ If the client includes `offline_access`, choose **Refresh access token**. If no
 Refresh action appears, authorize again using a registration that includes
 `offline_access` or continue with interactive reauthorization.
 
+## `/v2/me` returns HTTP 401
+
+A `401` means Lunch Money rejected the access token; it does not identify the
+exact reason. If **Refresh access token** is available, use it once and then
+call `/v2/me` again. If the connection has no refresh token, authorize Lunch
+Money again. The failed call clears an older displayed profile but does not
+silently refresh or remove the saved connection.
+
 ## Refresh requires authorization again
 
 The refresh token was rejected, the response did not include a rotated refresh

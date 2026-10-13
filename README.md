@@ -11,7 +11,9 @@ optionally rotate refresh credentials, revoke access, and reauthorize.
 Lunch Money's recommended and supported third-party OAuth library for Expo. It
 creates the authorization request and PKCE values; this sample adds secure
 attempt persistence, exact callback checks, token exchange, lifecycle handling,
-and API response validation.
+and lifecycle handling. The official
+[`@lunch-money/lunch-money-js-v2`](https://github.com/lunch-money/lunch-money-js-v2)
+SDK makes the authenticated `/v2/me` request.
 
 > This is a native/public client. It has no client secret. If your trusted
 > server performs the exchange and owns credentials, use the
@@ -61,16 +63,20 @@ client, authorize one or more budgets, switch the active budget, call `/v2/me`,
 optionally refresh, revoke and verify access, reauthorize, and test local-only
 reset.
 
-Token exchange alone is not a completed connection. Each authorization calls
-and strictly validates `/v2/me` before normal credential persistence or
-connected UI appears. Its `id` and `name` establish the active Lunch Money user,
-The pair (`id`, `account_id`) is the local connection key, so two Lunch Money
+Token exchange alone is not a completed connection. Each authorization uses the
+SDK to call `/v2/me` and checks that the properties needed by this sample are
+present before normal credential persistence or connected UI appears. Its `id`
+and `name` establish the active Lunch Money user. The pair (`id`, `account_id`)
+is the local connection key, so two Lunch Money
 users can independently authorize the same shared account. `budget_name` is
 display metadata.
 The active-budget selector exposes only stored budgets belonging to that active
 validated user. **Authorize another budget** starts a new authorization and may
 return a different user because shared browser state never proves identity.
 Until `/v2/me` succeeds, the app shows no connected identity or budget list.
+If that request fails during a new authorization, the error remains visible and
+the previously stored identity stays hidden so it cannot be mistaken for the
+authorization that just failed. The older credential is not deleted.
 
 ## Code map
 

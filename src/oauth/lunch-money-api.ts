@@ -1,51 +1,102 @@
-import { z } from 'zod'
+import {
+  LunchMoneyClient,
+  LunchMoneyError,
+  type User,
+} from '@lunch-money/lunch-money-js-v2'
 import { SafeOAuthError } from './errors'
 import type { LunchMoneyProfile } from './types'
 
-const profileSchema = z
-  .object({
-    name: z.string(),
-    email: z.string(),
-    id: z.number().int(),
-    account_id: z.number().int(),
-    budget_name: z.string(),
-    primary_currency: z.string(),
-    api_key_label: z.string().nullable(),
-  })
-  .strict()
+const requiredProfileFields = [
+  'name',
+  'email',
+  'id',
+  'account_id',
+  'budget_name',
+  'primary_currency',
+  'api_key_label',
+] as const satisfies readonly (keyof User)[]
+
+function hasRequiredProfileFields(body: User): boolean {
+  return (
+    typeof body === 'object' &&
+    body !== null &&
+    requiredProfileFields.every((field) => body[field] !== undefined)
+  )
+}
+
+function sdkBaseUrl(apiBaseUrl: URL): string {
+  return new URL('/v2', apiBaseUrl).href.replace(/\/$/, '')
+}
 
 /**
- * Call from the Call /v2/me action. Adds the access token to this request only
- * and returns a validated Lunch Money profile; token and response details are
- * never included in errors shown by the app.
+ * Call after authorization or when the user taps Call /v2/me. The official
+ * SDK adds the access token to this request and parses the response. This app
+ * still checks that every property it needs to identify and display the user
+ * is present because generated TypeScript types do not validate data at run
+ * time. The token, response body, and user data never enter displayed errors
+ * or diagnostic logs.
  */
 export async function readLunchMoneyProfile(
   apiBaseUrl: URL,
   accessToken: string,
   fetcher: typeof fetch = fetch,
 ): Promise<LunchMoneyProfile> {
+  let response: Response | undefined
+  const client = new LunchMoneyClient({
+    apiKey: accessToken,
+    baseUrl: sdkBaseUrl(apiBaseUrl),
+    fetch: async (request) => {
+      response = await fetcher(request)
+      return response
+    },
+  })
+  let profile: User
   try {
-    const response = await fetcher(new URL('/v2/me', apiBaseUrl), {
-      headers: {
-        Accept: 'application/json',
-        Authorization: `Bearer ${accessToken}`,
-      },
-    })
-    if (response.status === 403)
+    profile = await client.user.getMe()
+  } catch (cause) {
+    if (cause instanceof LunchMoneyError) {
+      if (cause.status === 403)
+        throw new SafeOAuthError(
+          'insufficient_scope',
+          'The registered client needs the me:read scope.',
+          cause,
+          { failureReason: 'http_error', httpStatus: cause.status },
+        )
       throw new SafeOAuthError(
-        'insufficient_scope',
-        'The registered client needs the me:read scope.',
+        'resource_failure',
+        'Lunch Money rejected the /v2/me request.',
+        cause,
+        {
+          failureReason: 'http_error',
+          ...(cause.status === undefined ? {} : { httpStatus: cause.status }),
+        },
       )
-    if (!response.ok) throw new Error()
-    const parsed = profileSchema.safeParse(await response.json())
-    if (!parsed.success) throw new Error()
-    return parsed.data
-  } catch (error) {
-    if (error instanceof SafeOAuthError) throw error
-    // Security invariant: token and response details do not appear in UI-facing failures or logs.
+    }
+    if (response)
+      throw new SafeOAuthError(
+        'resource_failure',
+        'Lunch Money /v2/me returned an invalid response.',
+        cause,
+        { failureReason: 'invalid_json', httpStatus: response.status },
+      )
     throw new SafeOAuthError(
       'resource_failure',
-      'Lunch Money /v2/me could not be read.',
+      'Lunch Money /v2/me could not be reached.',
+      cause,
+      { failureReason: 'network_error' },
     )
   }
+
+  if (!hasRequiredProfileFields(profile))
+    throw new SafeOAuthError(
+      'resource_failure',
+      'Lunch Money rejected the /v2/me request.',
+      undefined,
+      {
+        failureReason: 'invalid_response',
+        ...(response === undefined ? {} : { httpStatus: response.status }),
+      },
+    )
+
+  return profile
 }

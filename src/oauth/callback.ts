@@ -24,7 +24,7 @@ function sameRedirect(actual: URL, expected: URL): boolean {
  * Add this to the handler that receives the browser redirect. Before requesting
  * tokens, verify that the returned URL and random state value match what the
  * app saved when the user tapped Connect. Returns the short-lived code only
- * when both checks pass; otherwise it throws a UI-safe error.
+ * when both checks pass; otherwise it throws an error safe to show on screen.
  */
 export function validateCallback(
   callbackUrl: string,
@@ -88,8 +88,8 @@ export function validateCallback(
 /**
  * After validating the browser return, send its short-lived code and the saved
  * PKCE verifier to Lunch Money. Returns the credential that the caller must put
- * in secure device storage; codes, verifiers, tokens, and provider responses
- * are never included in thrown errors.
+ * in secure device storage; codes, verifiers, tokens, and Lunch Money response
+ * bodies are never included in thrown errors.
  */
 export async function exchangeAuthorizationCode(input: {
   clientId: string
@@ -126,7 +126,7 @@ export async function exchangeAuthorizationCode(input: {
       tokenType: token.token_type,
     }
   } catch {
-    // Security invariant: provider bodies, codes, verifiers, and raw token responses never enter the error.
+    // Security invariant: Lunch Money response bodies, codes, verifiers, and tokens never enter the displayed error.
     throw new SafeOAuthError(
       'provider_failure',
       'The authorization code could not be exchanged.',

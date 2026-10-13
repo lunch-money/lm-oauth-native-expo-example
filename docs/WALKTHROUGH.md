@@ -12,6 +12,12 @@ authorization request and S256 PKCE values. The sample persists the pending
 attempt before opening the browser so a callback can safely resume after app
 suspension or process restart.
 
+The official
+[`@lunch-money/lunch-money-js-v2`](https://github.com/lunch-money/lunch-money-js-v2)
+SDK makes authenticated v2 API calls. This sample uses it for `/v2/me`, then
+checks that the user and budget properties needed by the app are present before
+storing the connection.
+
 ## 1. Install and verify prerequisites
 
 You need the shared tools and **one** complete native development path. The iOS
@@ -242,13 +248,12 @@ send a `scope` parameter; Lunch Money uses the client's immutable registered set
 After approval, Lunch Money returns to the exact registered URI. The app deletes
 the pending attempt before checking the callback, rejects mismatch, expiry, or
 replay, and exchanges the code with `client_id` and the PKCE verifier. Token
-exchange alone is not a completed connection. The app then calls and strictly
-validates `/v2/me`, treats its `id` and `name` as the active Lunch Money user,
-uses the (`id`, `account_id`) pair to create or replace that budget's complete
-secure connection,
-and only then shows connected UI. There is no client secret or Authorization
-header. The five-minute attempt expiry is this sample's policy, not a Lunch
-Money token lifetime.
+exchange alone is not a completed connection. The app then uses the SDK to call
+`/v2/me`, checks the properties it needs, and treats its `id` and `name` as the
+active Lunch Money user. It uses the (`id`, `account_id`) pair to create or
+replace that budget's complete secure connection and only then shows connected
+UI. There is no client secret or Authorization header. The five-minute attempt
+expiry is this sample's policy, not a Lunch Money token lifetime.
 
 To connect another budget, choose **Authorize another budget** and approve it in
 the system browser. The first connection remains stored. The **Active budget**
@@ -286,11 +291,18 @@ authorization; the abandoned attempt is removed safely.
 ## 6. Call `/v2/me`
 
 Choose **Call /v2/me**. The app loads only the active budget's access token
-inside the action,
-sends it in the bearer header, validates every field against Lunch Money's
-documented `userObject`, and displays only the validated profile. A `403` means
+inside the action and gives it to the official SDK for this request. The SDK
+sends it in the bearer header and parses the response. The sample checks that
+the documented user properties it uses are present before displaying the
+profile. A `403` means
 the registered client is missing `me:read`; because scopes are immutable, use a
 replacement registration rather than adding `scope` to the request.
+
+If Lunch Money returns `401`, the app clears any older profile and explains that
+the access token may have expired. When the connection has a refresh token, use
+**Refresh access token** and then call `/v2/me` again. The sample keeps these as
+separate actions so you can observe token rotation before retrying the API call.
+If no refresh token is available, authorize Lunch Money again.
 
 ## 7. Optionally refresh access
 
