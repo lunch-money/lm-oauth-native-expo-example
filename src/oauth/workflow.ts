@@ -83,6 +83,7 @@ export function createNativeOAuthWorkflow(dependencies: {
       const metadata = await discoverAuthorizationServer(
         configuration.apiBaseUrl,
         fetcher,
+        configuration.allowLoopbackHttp,
       )
       const prepared = await browser.prepare({
         clientId: configuration.clientId,
@@ -124,8 +125,13 @@ export function createNativeOAuthWorkflow(dependencies: {
         const code = validateCallback(callbackUrl, attempt)
         const tokenEndpoint =
           knownTokenEndpoint ??
-          (await discoverAuthorizationServer(configuration.apiBaseUrl, fetcher))
-            .tokenEndpoint
+          (
+            await discoverAuthorizationServer(
+              configuration.apiBaseUrl,
+              fetcher,
+              configuration.allowLoopbackHttp,
+            )
+          ).tokenEndpoint
         const credential = await exchangeAuthorizationCode({
           clientId: configuration.clientId,
           code,
@@ -163,7 +169,7 @@ export function createNativeOAuthWorkflow(dependencies: {
      * returns connection and refresh availability without returning tokens.
      */
     async connectionStatus() {
-      return readConnectionSummary(credentialStore)
+      return readConnectionSummary(credentialStore, clock)
     },
 
     /** Select an already-authorized budget without starting OAuth. */
@@ -180,6 +186,7 @@ export function createNativeOAuthWorkflow(dependencies: {
       const metadata = await discoverAuthorizationServer(
         configuration.apiBaseUrl,
         fetcher,
+        configuration.allowLoopbackHttp,
       )
       return refreshCredential({
         clientId: configuration.clientId,
@@ -201,6 +208,7 @@ export function createNativeOAuthWorkflow(dependencies: {
       const metadata = await discoverAuthorizationServer(
         configuration.apiBaseUrl,
         fetcher,
+        configuration.allowLoopbackHttp,
       )
       await revokeAndVerify({
         accessToken: credential.accessToken,

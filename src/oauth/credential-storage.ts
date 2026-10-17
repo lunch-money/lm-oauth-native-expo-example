@@ -293,6 +293,7 @@ export async function loadCredential(
 /** Return screen-safe summaries only for the user last identified by `/v2/me`. */
 export async function readConnectionSummary(
   store: KeyValueStore,
+  clock: Clock,
 ): Promise<ConnectionStatus> {
   const document = await readDocument(store)
   const visible = document.connections
@@ -309,17 +310,34 @@ export async function readConnectionSummary(
     activeLunchMoneyUserId: document.activeLunchMoneyUserId,
     activeLunchMoneyUserName: active?.lunchMoneyUserName ?? null,
     legacyCredentialDiscarded: document.legacyCredentialDiscarded,
-    connections: visible.map((connection) => ({
-      accountId: connection.accountId,
-      lunchMoneyUserId: connection.lunchMoneyUserId,
-      lunchMoneyUserName: connection.lunchMoneyUserName,
-      budgetName: connection.budgetName,
-      active: connection.accountId === document.activeAccountId,
-      connected: connection.credentialState.status === 'active',
-      refreshAvailable:
-        connection.credentialState.status === 'active' &&
-        Boolean(connection.credentialState.credential.refreshToken),
-    })),
+    connections: visible.map((connection) => {
+      const state = connection.credentialState
+      const refreshAvailable =
+        state.status === 'active' && Boolean(state.credential.refreshToken)
+
+      // This is intentionally a local-only startup check. Expiration and the
+      // stored lifecycle state tell the app whether a request can be attempted
+      // immediately, but only an API call can establish server-side validity.
+      const availability =
+        state.status !== 'active'
+          ? 'reauthorization_required'
+          : state.credential.expiresAt > clock.now()
+            ? 'ready'
+            : refreshAvailable
+              ? 'refresh_required'
+              : 'reauthorization_required'
+
+      return {
+        accountId: connection.accountId,
+        lunchMoneyUserId: connection.lunchMoneyUserId,
+        lunchMoneyUserName: connection.lunchMoneyUserName,
+        budgetName: connection.budgetName,
+        active: connection.accountId === document.activeAccountId,
+        availability,
+        connected: availability === 'ready',
+        refreshAvailable,
+      }
+    }),
   }
 }
 

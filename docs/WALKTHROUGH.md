@@ -154,6 +154,20 @@ environment, set `EXPO_PUBLIC_LUNCH_MONEY_API_BASE_URL` to the exact URL supplie
 by Lunch Money support. The client registration and API base URL must belong to
 the same environment.
 
+Ordinary users should not set either an API override or a loopback exception.
+When Lunch Money support directs you to test against an API server running on
+the same development machine, set both values:
+
+```sh
+export EXPO_PUBLIC_LUNCH_MONEY_API_BASE_URL='http://localhost:3002'
+export EXPO_PUBLIC_LUNCH_MONEY_ALLOW_LOOPBACK_HTTP='true'
+```
+
+The exception permits HTTP only for `localhost`, `127.0.0.1`, or `[::1]`.
+Remote origins still require HTTPS. The simulator or emulator must be able to
+reach the selected loopback address; its networking model may differ from a
+physical device.
+
 As an equivalent local option, copy [`env.example`](../env.example) to `.env`,
 replace the placeholders, and run the commands below. Expo loads the file
 automatically. Git ignores `.env`.
@@ -196,8 +210,10 @@ npm run ios
 The command keeps Metro attached to the terminal, opens the installed app, and
 leaves the Simulator running independently. **Ctrl+C** stops Metro without
 closing Simulator. Start it again with `npm run ios` when you resume work.
-macOS may also ask the terminal app for local-network access, which Metro uses
-to connect the development build to its local server.
+The iOS script uses IPv4 localhost so VPN, cellular, and virtual network
+interfaces cannot put an unreachable or App Transport Security-blocked LAN
+address in the Simulator's development-client URL. The general `npm start`
+command retains Expo's LAN mode for physical-device development.
 
 If you open `http://localhost:8081` in a browser, its JSON response is Expo's
 development manifest. It is not the sample UI or an OAuth response.
@@ -288,6 +304,16 @@ finish consent, and open the callback in the installed development build. The
 attempt survives in secure storage. If more than five minutes passes, restart
 authorization; the abandoned attempt is removed safely.
 
+On every launch, the app also reads each visible connection's stored lifecycle
+state and access-token expiration time. Without making a network request, it
+classifies the active connection as ready to try, requiring refresh, or
+requiring authorization again. This is the same fast initial assessment a real
+app can use to avoid offering actions that are guaranteed to fail. It is not a
+server validity check: an unexpired token may still have been revoked. The
+sample keeps refresh explicit so you can observe rotation rather than hiding it
+inside startup behavior, and it does not delete credentials after a transient
+network failure.
+
 ## 6. Call `/v2/me`
 
 Choose **Call /v2/me**. The app loads only the active budget's access token
@@ -370,10 +396,11 @@ the client ID and redirect URI from step 3 are available in the shell that runs
 API base URL override, confirm that it is available there as well.
 
 An API base URL override must be the approved absolute **HTTPS** URL supplied
-for the Lunch Money client. An HTTP URL such as `http://localhost:3002` is
-rejected, so a server at that address will receive no request. The redirect URI
-must be exactly `app.lunchmoney.nativeexpo:/oauth/callback`, and the client ID
-must not be empty.
+for the Lunch Money client. The only exception is a support-directed local
+server at `localhost`, `127.0.0.1`, or `[::1]`, which also requires
+`EXPO_PUBLIC_LUNCH_MONEY_ALLOW_LOOPBACK_HTTP=true`. The flag never permits a
+remote HTTP origin. The redirect URI must be exactly
+`app.lunchmoney.nativeexpo:/oauth/callback`, and the client ID must not be empty.
 
 Stop Metro with **Ctrl+C**, correct or export the values, and restart it with
 the same command used for that session. Expo substitutes `EXPO_PUBLIC_` values
@@ -429,6 +456,17 @@ open -a Simulator
 If Simulator opens without a device, use **File → Open Simulator** to choose an
 installed device or return to Xcode's **Settings → Platforms** to install a
 runtime.
+
+#### The development client reports a Metro connection or transport-security error
+
+Stop older Metro processes with **Ctrl+C** and rerun `npm run ios`. The iOS
+script advertises and listens on IPv4 localhost; the development-client URL
+should use `127.0.0.1`, not a LAN address such as `192.0.0.2`. Choosing another
+local port when `8081` is occupied is supported.
+
+This Metro URL is separate from `EXPO_PUBLIC_LUNCH_MONEY_API_BASE_URL`. The
+loopback API opt-in controls calls made by the loaded sample; it cannot fix a
+development client that has not loaded the JavaScript bundle yet.
 
 #### `pod` is not found
 

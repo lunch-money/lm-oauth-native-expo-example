@@ -36,6 +36,24 @@ export function connectedStatusText(status: ConnectionStatus): string | null {
   return `${status.activeLunchMoneyUserName} is connected. ${count} authorized ${count === 1 ? 'budget' : 'budgets'}.`
 }
 
+/**
+ * Explain the locally derived credential state without implying that the app
+ * has contacted Lunch Money. An unexpired token is immediately usable, not
+ * guaranteed valid; the server may still have revoked it.
+ */
+export function connectionAvailabilityText(
+  connection: ConnectionSummary,
+): string {
+  switch (connection.availability) {
+    case 'ready':
+      return 'Ready to call the API based on the locally stored expiration time. Server validity has not been checked.'
+    case 'refresh_required':
+      return 'The access token is expired. Refresh it before calling the API.'
+    case 'reauthorization_required':
+      return 'This stored connection cannot be used. Authorize Lunch Money again or forget the local credential.'
+  }
+}
+
 /** Add an account ID only when two visible budgets have the same name. */
 export function connectionLabel(
   connection: ConnectionSummary,

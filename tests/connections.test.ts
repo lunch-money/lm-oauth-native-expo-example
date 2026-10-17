@@ -30,12 +30,54 @@ const profile = (
 })
 
 describe('secure multi-budget connection storage', () => {
+  it('classifies stored credentials locally without exposing tokens', async () => {
+    const store = new MemoryStore()
+    const clock = fakeClock()
+
+    await upsertConnection(store, profile(2, 'Personal'), {
+      ...credential('expired-refreshable'),
+      expiresAt: clock.now() - 1,
+      refreshToken: 'refresh-token',
+    })
+    await expect(readConnectionSummary(store, clock)).resolves.toMatchObject({
+      connections: [
+        {
+          availability: 'refresh_required',
+          connected: false,
+          refreshAvailable: true,
+        },
+      ],
+    })
+
+    await upsertConnection(store, profile(2, 'Personal'), {
+      ...credential('expired-without-refresh'),
+      expiresAt: clock.now() - 1,
+    })
+    const summary = await readConnectionSummary(store, clock)
+    expect(summary.connections).toMatchObject([
+      {
+        availability: 'reauthorization_required',
+        connected: false,
+        refreshAvailable: false,
+      },
+    ])
+    expect(JSON.stringify(summary)).not.toContain('expired-without-refresh')
+
+    await upsertConnection(store, profile(2, 'Personal'), {
+      ...credential('unexpired'),
+      expiresAt: clock.now() + 1,
+    })
+    await expect(readConnectionSummary(store, clock)).resolves.toMatchObject({
+      connections: [{ availability: 'ready', connected: true }],
+    })
+  })
+
   it('retains two budgets, activates the newest, and selects without OAuth', async () => {
     const store = new MemoryStore()
     await upsertConnection(store, profile(2, 'Household'), credential('a'))
     await upsertConnection(store, profile(3, 'Business'), credential('b'))
 
-    const summary = await readConnectionSummary(store)
+    const summary = await readConnectionSummary(store, fakeClock())
     expect(summary).toMatchObject({
       activeAccountId: 3,
       connections: [
@@ -57,7 +99,7 @@ describe('secure multi-budget connection storage', () => {
     await upsertConnection(store, profile(3, 'Shared'), credential('other'))
     await upsertConnection(store, profile(2, 'Shared'), credential('new'))
 
-    const summary = await readConnectionSummary(store)
+    const summary = await readConnectionSummary(store, fakeClock())
     expect(summary.connections).toHaveLength(2)
     expect(summary.activeAccountId).toBe(2)
     await expect(loadCredential(store, fakeClock())).resolves.toMatchObject({
@@ -78,7 +120,9 @@ describe('secure multi-budget connection storage', () => {
       credential('b'),
     )
 
-    await expect(readConnectionSummary(store)).resolves.toMatchObject({
+    await expect(
+      readConnectionSummary(store, fakeClock()),
+    ).resolves.toMatchObject({
       activeAccountId: 3,
       activeLunchMoneyUserId: 8,
       activeLunchMoneyUserName: 'User B',
@@ -93,7 +137,9 @@ describe('secure multi-budget connection storage', () => {
       profile(2, 'Personal', 7, 'User A'),
       credential('a-new'),
     )
-    await expect(readConnectionSummary(store)).resolves.toMatchObject({
+    await expect(
+      readConnectionSummary(store, fakeClock()),
+    ).resolves.toMatchObject({
       activeLunchMoneyUserId: 7,
       connections: [{ accountId: 2, lunchMoneyUserId: 7 }],
     })
@@ -112,7 +158,9 @@ describe('secure multi-budget connection storage', () => {
       credential('user-b'),
     )
 
-    await expect(readConnectionSummary(store)).resolves.toMatchObject({
+    await expect(
+      readConnectionSummary(store, fakeClock()),
+    ).resolves.toMatchObject({
       connections: [{ accountId: 2, lunchMoneyUserId: 8 }],
     })
     await expect(loadCredential(store, fakeClock())).resolves.toMatchObject({
@@ -158,7 +206,7 @@ describe('secure multi-budget connection storage', () => {
       JSON.stringify({ status: 'active', credential: credential('legacy') }),
     )
 
-    await expect(readConnectionSummary(store)).resolves.toEqual({
+    await expect(readConnectionSummary(store, fakeClock())).resolves.toEqual({
       activeAccountId: null,
       activeLunchMoneyUserId: null,
       activeLunchMoneyUserName: null,
@@ -182,7 +230,7 @@ describe('secure multi-budget connection storage', () => {
       JSON.stringify({ status: 'active', credential: credential('legacy') }),
     )
 
-    await expect(readConnectionSummary(store)).resolves.toEqual({
+    await expect(readConnectionSummary(store, fakeClock())).resolves.toEqual({
       activeAccountId: null,
       activeLunchMoneyUserId: null,
       activeLunchMoneyUserName: null,
@@ -200,7 +248,9 @@ describe('secure multi-budget connection storage', () => {
     await upsertConnection(store, profile(4, 'Four'), credential('four'))
     await removeActiveConnection(store)
 
-    await expect(readConnectionSummary(store)).resolves.toMatchObject({
+    await expect(
+      readConnectionSummary(store, fakeClock()),
+    ).resolves.toMatchObject({
       activeAccountId: 9,
       connections: [{ accountId: 9, active: true }],
     })
@@ -220,7 +270,9 @@ describe('secure multi-budget connection storage', () => {
     )
     await removeActiveConnection(store)
 
-    await expect(readConnectionSummary(store)).resolves.toMatchObject({
+    await expect(
+      readConnectionSummary(store, fakeClock()),
+    ).resolves.toMatchObject({
       activeAccountId: null,
       activeLunchMoneyUserId: 8,
       activeLunchMoneyUserName: null,
@@ -238,7 +290,9 @@ describe('secure multi-budget connection storage', () => {
       JSON.stringify({ version: 2, connections: [] }),
     )
 
-    await expect(readConnectionSummary(store)).resolves.toMatchObject({
+    await expect(
+      readConnectionSummary(store, fakeClock()),
+    ).resolves.toMatchObject({
       activeAccountId: null,
       connections: [],
       legacyCredentialDiscarded: true,
@@ -252,7 +306,9 @@ describe('secure multi-budget connection storage', () => {
     const store = new MemoryStore()
     store.values.set('lunch-money.native-oauth.connections.v3', '{bad json')
 
-    await expect(readConnectionSummary(store)).resolves.toMatchObject({
+    await expect(
+      readConnectionSummary(store, fakeClock()),
+    ).resolves.toMatchObject({
       activeAccountId: null,
       connections: [],
     })
@@ -271,7 +327,9 @@ describe('secure multi-budget connection storage', () => {
     saved.connections.push(saved.connections[0])
     store.values.set(key, JSON.stringify(saved))
 
-    await expect(readConnectionSummary(store)).resolves.toMatchObject({
+    await expect(
+      readConnectionSummary(store, fakeClock()),
+    ).resolves.toMatchObject({
       activeAccountId: null,
       connections: [],
     })

@@ -134,7 +134,9 @@ describe('credential, resource, revocation, and reset behavior', () => {
     await expect(loadCredential(store, clock)).rejects.toMatchObject({
       code: 'credential_expired',
     })
-    await expect(readConnectionSummary(store)).resolves.toMatchObject({
+    await expect(
+      readConnectionSummary(store, fakeClock()),
+    ).resolves.toMatchObject({
       activeAccountId: null,
       connections: [],
     })
@@ -229,7 +231,9 @@ describe('credential, resource, revocation, and reset behavior', () => {
       tokenType: 'Bearer',
     })
     await removeActiveConnection(store)
-    await expect(readConnectionSummary(store)).resolves.toMatchObject({
+    await expect(
+      readConnectionSummary(store, fakeClock()),
+    ).resolves.toMatchObject({
       activeAccountId: null,
       connections: [],
     })

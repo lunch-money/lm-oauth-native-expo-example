@@ -11,6 +11,7 @@ export interface KeyValueStore {
 }
 
 export interface OAuthConfiguration {
+  allowLoopbackHttp?: boolean
   apiBaseUrl: URL
   clientId: string
   redirectUri: string
@@ -58,9 +59,18 @@ export interface ConnectionSummary {
   lunchMoneyUserName: string
   budgetName: string
   active: boolean
+  availability: ConnectionAvailability
   connected: boolean
   refreshAvailable: boolean
 }
+
+/**
+ * A local assessment of whether a stored connection can make an API call.
+ * This does not contact Lunch Money, so `ready` cannot prove that an
+ * otherwise-unexpired token has not been revoked by the authorization server.
+ */
+export type ConnectionAvailability =
+  'ready' | 'refresh_required' | 'reauthorization_required'
 
 interface AuthorizationResultBase {
   budgetName: string

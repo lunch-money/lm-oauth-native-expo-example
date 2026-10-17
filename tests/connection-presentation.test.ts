@@ -1,5 +1,6 @@
 import {
   authorizationResultMessage,
+  connectionAvailabilityText,
   connectionStatusForDisplay,
   connectedStatusText,
   connectionLabel,
@@ -18,6 +19,7 @@ const connection = (
   lunchMoneyUserId: 7,
   lunchMoneyUserName: 'Demo User',
   active: accountId === 1,
+  availability: 'ready',
   connected: true,
   refreshAvailable: false,
 })
@@ -55,6 +57,24 @@ describe('connection presentation', () => {
       ),
     ).toBe('Demo User is connected. 2 authorized budgets.')
     expect(connectedStatusText(status([]))).toBeNull()
+  })
+
+  it('explains that local readiness is not server validation', () => {
+    expect(connectionAvailabilityText(connection(1, 'Personal'))).toContain(
+      'Server validity has not been checked',
+    )
+    expect(
+      connectionAvailabilityText({
+        ...connection(1, 'Personal'),
+        availability: 'refresh_required',
+      }),
+    ).toBe('The access token is expired. Refresh it before calling the API.')
+    expect(
+      connectionAvailabilityText({
+        ...connection(1, 'Personal'),
+        availability: 'reauthorization_required',
+      }),
+    ).toContain('Authorize Lunch Money again')
   })
 
   it('adds account IDs only when visible budget names collide', () => {

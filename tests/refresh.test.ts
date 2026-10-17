@@ -206,7 +206,9 @@ describe('native refresh rotation', () => {
       status: 'reauthorization_required',
       reason: 'invalid_grant',
     })
-    await expect(readConnectionSummary(store)).resolves.toMatchObject({
+    await expect(
+      readConnectionSummary(store, fakeClock()),
+    ).resolves.toMatchObject({
       connections: [
         { accountId: 10, connected: true },
         { accountId: 20, connected: false },
@@ -232,7 +234,9 @@ describe('native refresh rotation', () => {
     )
     await beginRefresh(store)
 
-    await expect(readConnectionSummary(store)).resolves.toMatchObject({
+    await expect(
+      readConnectionSummary(store, fakeClock()),
+    ).resolves.toMatchObject({
       connections: [
         { accountId: 10, connected: true },
         { accountId: 20, connected: false },
