@@ -9,9 +9,9 @@
   },
   "scripts": {
     "start": "expo start --dev-client",
-    "ios": "EXPO_NO_QR_CODE=1 expo start --dev-client --ios",
+    "ios": "NODE_OPTIONS=--dns-result-order=ipv4first EXPO_NO_QR_CODE=1 expo start --dev-client --ios --localhost",
     "ios:build": "expo run:ios --no-bundler",
-    "ios:metro": "EXPO_NO_QR_CODE=1 expo start --dev-client",
+    "ios:metro": "NODE_OPTIONS=--dns-result-order=ipv4first EXPO_NO_QR_CODE=1 expo start --dev-client --localhost",
     "android": "expo run:android",
     "build": "npm run export:ios && npm run export:android",
     "export:ios": "expo export --platform ios --output-dir dist/ios",

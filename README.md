@@ -52,6 +52,11 @@ The API base URL defaults to `https://api.lunchmoney.dev`. Beta and alpha
 testers can set `EXPO_PUBLIC_LUNCH_MONEY_API_BASE_URL` to the exact environment
 URL supplied by Lunch Money support.
 
+Ordinary users do not set an API override. For support-directed testing against
+a server running on the same development machine, set the loopback HTTP URL and
+`EXPO_PUBLIC_LUNCH_MONEY_ALLOW_LOOPBACK_HTTP=true`. The opt-in accepts only
+`localhost`, `127.0.0.1`, or `[::1]`; remote API origins still require HTTPS.
+
 As an alternative to shell exports, copy [`env.example`](env.example) to
 `.env`, replace its placeholders, and run the same commands. Expo loads
 that file automatically. All `EXPO_PUBLIC_` values are bundled into the app and

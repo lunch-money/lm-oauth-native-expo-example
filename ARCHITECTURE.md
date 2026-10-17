@@ -1,5 +1,7 @@
 # Architecture
 
+This repository is a native public-client sample. It is independently runnable and does not rely on any backend components.
+
 ```text
 React Native screen (no credentials in state)
   -> OAuth workflow
@@ -19,6 +21,11 @@ the protocol-facing application decisions and narrow injected boundaries.
 public environment adaptation, device SecureStore wiring, and lifecycle glue.
 ESLint and [`tests/publication.test.ts`](tests/publication.test.ts) enforce that
 the OAuth core cannot import React, Expo Router, styling, or scaffolding.
+
+Within the replaceable scaffolding, `useOAuthDemo.ts` adapts the workflow to
+safe React state and UI actions. `AppScreen.tsx` and `components/` render those
+values. Presentation components never receive tokens, authorization attempts,
+raw responses, or storage adapters.
 
 `expo-auth-session` prepares state, verifier, S256 challenge, and authorization
 URL. The application still discovers endpoints, persists the attempt before
@@ -53,6 +60,13 @@ usable. Removing the active connection selects the remaining lowest numeric
 account ID owned by the same Lunch Money user. If that user has none left, the
 app shows a disconnected state and never reveals or selects another user's
 stored connection.
+
+At startup, the credential-storage boundary turns the stored lifecycle state
+and expiration timestamp into a token-free `ready`, `refresh_required`, or
+`reauthorization_required` summary. This local assessment prevents the React UI
+from offering API actions that are already known to fail. It deliberately does
+not claim server validation: only an API request can discover revocation of an
+otherwise-unexpired access token.
 
 Previous storage records lack the complete validated identity needed by the
 connected UI. On first read, the sample removes them, records a safe migration

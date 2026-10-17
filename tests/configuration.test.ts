@@ -27,6 +27,50 @@ describe('configuration and discovery', () => {
     )
   })
 
+  it('loads loopback HTTP metadata for support-directed local testing', async () => {
+    const fetcher = jest.fn().mockResolvedValue(
+      Response.json({
+        authorization_endpoint: 'http://localhost:3002/authorize',
+        token_endpoint: 'http://localhost:3002/token',
+        revocation_endpoint: 'http://localhost:3002/revoke',
+        code_challenge_methods_supported: ['S256'],
+        token_endpoint_auth_methods_supported: ['none'],
+      }),
+    ) as jest.MockedFunction<typeof fetch>
+
+    await expect(
+      discoverAuthorizationServer(
+        new URL('http://localhost:3002'),
+        fetcher,
+        true,
+      ),
+    ).resolves.toEqual({
+      authorizationEndpoint: 'http://localhost:3002/authorize',
+      tokenEndpoint: 'http://localhost:3002/token',
+      revocationEndpoint: 'http://localhost:3002/revoke',
+    })
+  })
+
+  it('rejects remote HTTP metadata even from a loopback issuer', async () => {
+    const fetcher = jest.fn().mockResolvedValue(
+      Response.json({
+        authorization_endpoint: 'http://api.test/authorize',
+        token_endpoint: 'http://api.test/token',
+        revocation_endpoint: 'http://api.test/revoke',
+        code_challenge_methods_supported: ['S256'],
+        token_endpoint_auth_methods_supported: ['none'],
+      }),
+    ) as jest.MockedFunction<typeof fetch>
+
+    await expect(
+      discoverAuthorizationServer(
+        new URL('http://localhost:3002'),
+        fetcher,
+        true,
+      ),
+    ).rejects.toThrow('Lunch Money OAuth configuration could not be loaded.')
+  })
+
   it('accepts valid public configuration', () => {
     expect(
       parseConfiguration({
@@ -44,6 +88,46 @@ describe('configuration and discovery', () => {
         redirectUri: 'app.example.native:/oauth/callback',
       }).apiBaseUrl.toString(),
     ).toBe(`${DEFAULT_API_BASE_URL}/`)
+  })
+
+  it.each([
+    'http://localhost:3002',
+    'http://127.0.0.1:3002',
+    'http://[::1]:3002',
+  ])('permits support-directed loopback HTTP at %s', (apiBaseUrl) => {
+    expect(
+      parseConfiguration({
+        allowLoopbackHttp: true,
+        apiBaseUrl,
+        clientId: 'public-client',
+        redirectUri: 'app.example.native:/oauth/callback',
+      }).apiBaseUrl.toString(),
+    ).toBe(`${apiBaseUrl}/`)
+  })
+
+  it('does not permit loopback HTTP without the explicit opt-in', () => {
+    expect(() =>
+      parseConfiguration({
+        apiBaseUrl: 'http://localhost:3002',
+        clientId: 'public-client',
+        redirectUri: 'app.example.native:/oauth/callback',
+      }),
+    ).toThrow(
+      'The Lunch Money API base URL must use HTTPS unless support-directed loopback HTTP is explicitly enabled.',
+    )
+  })
+
+  it('does not permit remote HTTP with the loopback opt-in', () => {
+    expect(() =>
+      parseConfiguration({
+        allowLoopbackHttp: true,
+        apiBaseUrl: 'http://api.test',
+        clientId: 'public-client',
+        redirectUri: 'app.example.native:/oauth/callback',
+      }),
+    ).toThrow(
+      'The Lunch Money API base URL must use HTTPS unless support-directed loopback HTTP is explicitly enabled.',
+    )
   })
 
   it.each([
@@ -68,7 +152,7 @@ describe('configuration and discovery', () => {
         clientId: 'x',
         redirectUri: 'app.example:/callback',
       },
-      'The Lunch Money API base URL must use HTTPS.',
+      'The Lunch Money API base URL must use HTTPS unless support-directed loopback HTTP is explicitly enabled.',
     ],
     [
       'redirect URI',

@@ -5,6 +5,7 @@ export type { ConnectionStatus } from './credential-storage'
 export type { RefreshResult } from './refresh'
 export type {
   AuthorizationResult,
+  ConnectionAvailability,
   ConnectionSummary,
   LunchMoneyProfile,
 } from './types'

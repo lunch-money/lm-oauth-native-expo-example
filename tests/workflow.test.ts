@@ -84,6 +84,7 @@ describe('native OAuth workflow callback coordination', () => {
         {
           accountId: 20,
           active: true,
+          availability: 'ready',
           budgetName: 'Household',
           connected: true,
           lunchMoneyUserId: 10,

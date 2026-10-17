@@ -42,31 +42,48 @@ describe('public repository boundaries', () => {
     expect(text).not.toMatch(/CLIENT_SECRET|ACCESS_TOKEN|REFRESH_TOKEN/)
   })
 
+  it('uses IPv4 localhost for the iOS Simulator development client', () => {
+    const packageJson = JSON.parse(readFileSync('package.json', 'utf8')) as {
+      scripts: Record<string, string>
+    }
+    for (const script of [
+      packageJson.scripts.ios,
+      packageJson.scripts['ios:metro'],
+    ]) {
+      expect(script).toContain('NODE_OPTIONS=--dns-result-order=ipv4first')
+      expect(script).toContain('--localhost')
+    }
+  })
+
   it('clears resource output across authorization and budget transitions', () => {
-    const screen = readFileSync('src/scaffolding/AppScreen.tsx', 'utf8')
-    expect(screen).toContain('setHideStoredConnections(true)')
-    expect(screen).toContain('setHideStoredConnections(false)')
-    expect(screen).toContain('connectionStatusForDisplay(')
-    expect(screen).toMatch(
+    const controller = readFileSync('src/scaffolding/useOAuthDemo.ts', 'utf8')
+    expect(controller).toContain('setHideStoredConnections(true)')
+    expect(controller).toContain('setHideStoredConnections(false)')
+    expect(controller).toContain('connectionStatusForDisplay(')
+    expect(controller).toMatch(
       /async function act[\s\S]*setBusy\(true\)\s+setProfile\(null\)/,
     )
-    expect(screen).toContain('const result = await workflow.authorize()')
-    expect(screen).toContain(
-      '() => workflow.selectConnection(connection.accountId)',
+    expect(controller).toContain('const result = await workflow.authorize()')
+    expect(controller).toContain(
+      'workflow.selectConnection(connection.accountId)',
     )
   })
 
   it('logs only allowlisted OAuth failure diagnostics', () => {
-    const screen = readFileSync('src/scaffolding/AppScreen.tsx', 'utf8')
-    expect(screen).toContain('...safeOAuthErrorDiagnostic(error)')
-    expect(screen).toContain("'oauth.authorization.failed'")
-    expect(screen).toContain("'oauth.me.failed'")
-    expect(screen).not.toContain('JSON.stringify(error)')
+    const controller = readFileSync('src/scaffolding/useOAuthDemo.ts', 'utf8')
+    expect(controller).toContain('...safeOAuthErrorDiagnostic(error)')
+    expect(controller).toContain("'oauth.authorization.failed'")
+    expect(controller).toContain("'oauth.me.failed'")
+    expect(controller).not.toContain('JSON.stringify(error)')
   })
 
   it('keeps the local-only forget action explicit and confirmed', () => {
     const screen = readFileSync('src/scaffolding/AppScreen.tsx', 'utf8')
-    expect(screen).toContain('Forget local credential only')
+    const connectionCard = readFileSync(
+      'src/scaffolding/components/ConnectionCard.tsx',
+      'utf8',
+    )
+    expect(connectionCard).toContain('Forget local credential only')
     expect(screen).toContain(
       'The remote Lunch Money authorization remains active.',
     )
@@ -74,14 +91,15 @@ describe('public repository boundaries', () => {
   })
 
   it('uses a compact accessible selector for multiple visible budgets', () => {
-    const screen = readFileSync('src/scaffolding/AppScreen.tsx', 'utf8')
-    expect(screen).toContain('<Modal')
-    expect(screen).toContain(
-      'onRequestClose={() => setBudgetSelectorVisible(false)}',
+    const selector = readFileSync(
+      'src/scaffolding/components/BudgetSelector.tsx',
+      'utf8',
     )
-    expect(screen).toContain('accessibilityRole="radio"')
-    expect(screen).toContain('accessibilityRole="button"')
-    expect(screen).toContain('setBudgetSelectorVisible(false)')
-    expect(screen).not.toContain('Switch budget')
+    expect(selector).toContain('<Modal')
+    expect(selector).toContain('onRequestClose={onClose}')
+    expect(selector).toContain('accessibilityRole="radio"')
+    expect(selector).toContain('<ActionButton')
+    expect(selector).toContain('label="Cancel"')
+    expect(selector).not.toContain('Switch budget')
   })
 })

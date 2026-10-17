@@ -4,6 +4,13 @@ import type { AuthorizationServerMetadata, OAuthConfiguration } from './types'
 
 export const DEFAULT_API_BASE_URL = 'https://api.lunchmoney.dev'
 
+function isLoopbackHttp(url: URL): boolean {
+  return (
+    url.protocol === 'http:' &&
+    ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)
+  )
+}
+
 const metadataSchema = z.object({
   authorization_endpoint: z.string().url(),
   token_endpoint: z.string().url(),
@@ -22,6 +29,7 @@ const metadataSchema = z.object({
  * values. A native app must never add a client secret here.
  */
 export function parseConfiguration(input: {
+  allowLoopbackHttp?: boolean
   apiBaseUrl?: string
   clientId?: string
   redirectUri?: string
@@ -39,8 +47,13 @@ export function parseConfiguration(input: {
       'The Lunch Money API base URL must be an absolute HTTPS URL.',
     )
   }
-  if (apiBaseUrl.protocol !== 'https:')
-    throw configurationError('The Lunch Money API base URL must use HTTPS.')
+  if (
+    apiBaseUrl.protocol !== 'https:' &&
+    !(input.allowLoopbackHttp && isLoopbackHttp(apiBaseUrl))
+  )
+    throw configurationError(
+      'The Lunch Money API base URL must use HTTPS unless support-directed loopback HTTP is explicitly enabled.',
+    )
 
   let redirect: URL
   try {
@@ -54,6 +67,9 @@ export function parseConfiguration(input: {
     )
 
   return {
+    allowLoopbackHttp: Boolean(
+      input.allowLoopbackHttp && isLoopbackHttp(apiBaseUrl),
+    ),
     apiBaseUrl,
     clientId: input.clientId,
     redirectUri: redirect.toString(),
@@ -73,6 +89,7 @@ function configurationError(message: string): SafeOAuthError {
 export async function discoverAuthorizationServer(
   apiBaseUrl: URL,
   fetcher: typeof fetch = fetch,
+  allowLoopbackHttp = false,
 ): Promise<AuthorizationServerMetadata> {
   try {
     const url = new URL('/.well-known/oauth-authorization-server', apiBaseUrl)
@@ -86,7 +103,12 @@ export async function discoverAuthorizationServer(
       parsed.token_endpoint,
       parsed.revocation_endpoint,
     ]) {
-      if (new URL(endpoint).protocol !== 'https:') throw new Error()
+      const url = new URL(endpoint)
+      if (
+        url.protocol !== 'https:' &&
+        !(allowLoopbackHttp && isLoopbackHttp(url))
+      )
+        throw new Error()
     }
     return {
       authorizationEndpoint: parsed.authorization_endpoint,
